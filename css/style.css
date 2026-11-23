@@ -165,7 +165,8 @@ dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: 
   display: flex; flex-direction: column; gap: 8px;
   padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
 }
-.quick-dates[hidden], .hint[hidden] { display: none; }
+.quick-dates[hidden], .hint[hidden], .warn[hidden] { display: none; }
+.warn { margin: 0; padding: 6px 10px; font-size: 13px; color: #9a2a3c; background: #fdecef; border: 1px solid #f0c2ca; border-radius: 8px; }
 .quick-dates button { font-size: 12px; padding: 4px 8px; }
 .qd-row { display: flex; align-items: center; gap: 10px; }
 .qd-label { flex: 0 0 34px; font-size: 12px; color: var(--muted); }
@@ -195,3 +196,8 @@ dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: 
   .bar .h.r { right: -8px; }
   .row2 { grid-template-columns: 1fr; }
 }
+
+/* Üst öğe aralığı dışına taşan alt görev / taşma içeren üst öğe */
+.bar.out { outline: 2px dashed var(--danger); outline-offset: 1px; }
+.bar.summary.overflow::before, .bar.summary.overflow::after { border-top-color: var(--danger); }
+.warn-ic { color: var(--danger); }

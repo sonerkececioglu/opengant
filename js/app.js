@@ -172,12 +172,14 @@ function renderBars() {
     const bw = Math.max(4, Math.min(xOf(sp.end), w + 200) - x);
     const cls = ['bar'];
     if (sp.summary) cls.push('summary');
+    if (sp.out) cls.push('out');
+    if (sp.outCount) cls.push('overflow');
     if (item.done) cls.push('done');
     if (item.id === selectedId) cls.push('sel');
     if (!sp.summary && bw < 60) cls.push('narrow');
     html += `<div class="${cls.join(' ')}" data-id="${item.id}" style="--c:${item.color};left:${x}px;width:${bw}px;top:${i * rh}px">
       <div class="fill" style="width:${Math.min(100, sp.progress)}%"></div>
-      <div class="lbl">${esc(item.title)}</div>
+      <div class="lbl">${sp.outCount ? `<span class="warn-ic" title="${sp.outCount} alt görev bu aralığın dışında">⚠</span> ` : ""}${esc(item.title)}</div>
       ${sp.summary ? '' : '<div class="h l" data-h="l"></div><div class="h r" data-h="r"></div>'}
     </div>`;
   });
@@ -325,7 +327,9 @@ function onMove(e) {
     const x = Math.max(xOf(s), -200);
     gesture.el.style.left = `${x}px`;
     gesture.el.style.width = `${Math.max(4, Math.min(xOf(en), w + 200) - x)}px`;
-    showTip(e.clientX, gesture.el.getBoundingClientRect().top - 6, fmtRange(s, en));
+    const po = parentOverflow(item, s, en);
+    gesture.el.classList.toggle('out', !!po);
+    showTip(e.clientX, gesture.el.getBoundingClientRect().top - 6, fmtRange(s, en) + (po ? `  ⚠ "${po.title}" dışına taşıyor` : ''));
   }
 }
 
@@ -497,11 +501,11 @@ function openEditor(id, isNew = false) {
   f.parent.innerHTML = parentOptions(item);
   f.parent.value = item.parentId || '';
   const summary = !!sp?.summary;
-  f.start.value = toInput(summary ? sp.start : item.start);
-  f.end.value = toInput(summary ? sp.end : item.end);
-  f.start.disabled = f.end.disabled = summary;
-  $('quickDates').hidden = summary;
-  $('edSummary').hidden = !summary;
+  editing.auto = !!sp?.auto;
+  editing.datesTouched = false;
+  f.start.value = toInput(sp?.start ?? item.start);
+  f.end.value = toInput(sp?.end ?? item.end);
+  $('edSummary').hidden = !editing.auto;
   f.done.checked = item.done;
   f.progress.value = item.progress || 0;
   f.progress.disabled = summary;
@@ -510,6 +514,7 @@ function openEditor(id, isNew = false) {
   renderSwatches();
   els.editor.returnValue = '';
   resetQuick();
+  checkEditorRange();
   els.editor.showModal();
   if (isNew) { f.title.select(); }
 }
@@ -561,9 +566,40 @@ $('quickDates').addEventListener('click', e => {
     quick.dur = b.dataset.q;
   } else return;
   applyQuick();
+  if (quick.dur) editing.datesTouched = true;
   if (quick.dur === 'clear') quick.dur = null;
   renderQuick();
+  checkEditorRange();
 });
+
+// Bir aralığın üst öğenin kendi aralığı dışına taşıp taşmadığı (taşıyorsa üst öğe döner)
+function parentOverflow(item, s, en) {
+  const p = item.parentId ? byId(state, item.parentId) : null;
+  if (!p || p.start == null || p.end == null || s == null || en == null) return null;
+  return (s < p.start || en > p.end) ? p : null;
+}
+
+function checkEditorRange() {
+  const item = byId(state, editing?.id);
+  const warn = $('edWarn');
+  if (!item) { warn.hidden = true; return; }
+  const f = els.editForm.elements;
+  const s = fromInput(f.start.value), en = fromInput(f.end.value);
+  const msgs = [];
+  const p = parentOverflow(item, s, en);
+  if (p) msgs.push(`⚠ Üst öğe "${p.title}" aralığının dışına taşıyor (${fmtRange(p.start, p.end)}).`);
+  if (s != null && en != null && !(editing.auto && !editing.datesTouched)) {
+    const out = children(state, item.id).filter(k => {
+      const ks = spans.get(k.id);
+      return ks?.start != null && (ks.start < s || ks.end > en);
+    });
+    if (out.length) msgs.push(`⚠ ${out.length} alt görev bu aralığın dışında kalıyor.`);
+  }
+  warn.textContent = msgs.join(' ');
+  warn.hidden = !msgs.length;
+}
+els.editForm.elements.start.addEventListener('input', () => { editing.datesTouched = true; checkEditorRange(); });
+els.editForm.elements.end.addEventListener('input', () => { editing.datesTouched = true; checkEditorRange(); });
 
 function applyEditor() {
   const item = byId(state, editing.id);
@@ -574,7 +610,8 @@ function applyEditor() {
   item.done = f.done.checked;
   item.notes = f.notes.value;
   if (!f.progress.disabled) item.progress = Number(f.progress.value);
-  if (!f.start.disabled) {
+  // Otomatik (alt görevlerden) aralığı olan üst öğede tarihe dokunulmadıysa kendi tarihi atanmaz.
+  if (!(editing.auto && !editing.datesTouched)) {
     let s = fromInput(f.start.value), en = fromInput(f.end.value);
     if (s != null && en == null) en = s + HOUR;
     if (en != null && s == null) s = en - HOUR;

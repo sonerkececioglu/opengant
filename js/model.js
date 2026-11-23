@@ -78,7 +78,9 @@ export function visibleRows(state) {
   return rows;
 }
 
-// Her öğe için zaman aralığı: alt görevi tarihliyse alt görevlerden hesaplanır (özet çubuk)
+// Her öğe için zaman aralığı.
+// Üst öğenin kendi tarihi varsa o kullanılır; alt görevler onu değiştirmez, dışına taşan alt görev `out` ile işaretlenir.
+// Kendi tarihi yoksa aralık alt görevlerden hesaplanır (`auto`).
 export function computeSpans(state) {
   const map = new Map();
   const kidsOf = new Map();
@@ -89,18 +91,31 @@ export function computeSpans(state) {
   const calc = (it) => {
     if (map.has(it.id)) return map.get(it.id);
     let s = Infinity, e = -Infinity, pSum = 0, pW = 0;
+    const dated = [];
     for (const k of kidsOf.get(it.id) || []) {
       const r = calc(k);
       if (r.start != null) {
+        dated.push(r);
         s = Math.min(s, r.start); e = Math.max(e, r.end);
         const w = Math.max(r.end - r.start, 1);
         pSum += r.progress * w; pW += w;
       }
     }
+    const own = it.start != null && it.end != null;
     let res;
-    if (s !== Infinity) {
-      res = { start: s, end: e, summary: true, progress: pW ? pSum / pW : 0 };
-    } else if (it.start != null && it.end != null) {
+    if (dated.length) {
+      const progress = pW ? pSum / pW : 0;
+      if (own) {
+        let outCount = 0;
+        for (const r of dated) {
+          r.out = r.start < it.start || r.end > it.end;
+          if (r.out) outCount++;
+        }
+        res = { start: it.start, end: it.end, summary: true, auto: false, outCount, kidsStart: s, kidsEnd: e, progress };
+      } else {
+        res = { start: s, end: e, summary: true, auto: true, outCount: 0, progress };
+      }
+    } else if (own) {
       res = { start: it.start, end: it.end, summary: false, progress: it.done ? 100 : (it.progress || 0) };
     } else {
       res = { start: null, end: null, summary: false, progress: it.done ? 100 : (it.progress || 0) };

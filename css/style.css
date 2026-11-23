@@ -205,3 +205,29 @@ dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: 
 .bar.out { outline: 2px dashed var(--danger); outline-offset: 1px; }
 .bar.summary.overflow::before, .bar.summary.overflow::after { border-top-color: var(--danger); }
 .warn-ic { color: var(--danger); }
+
+/* Düzenleyici: kategori ve son tarih */
+.cat-pick { display: flex; gap: 6px; margin-top: 4px; }
+.cat-pick select { flex: 1; min-width: 0; }
+.cat-new { display: flex; gap: 6px; margin-top: 6px; }
+.cat-new[hidden] { display: none; }
+.cat-new input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-size: 13px; }
+.due-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.due-row button { font-size: 12px; padding: 4px 8px; }
+
+/* To-do: proje seçimi ve etiketler */
+.todo-add select { max-width: 38%; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-size: 14px; background: var(--panel); }
+.todo-list .tl-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
+.chip { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eef1f6; color: var(--muted); white-space: nowrap; }
+.chip.due-today { background: #e8eeff; color: var(--accent); }
+.chip.overdue { background: #fdecef; color: #9a2a3c; }
+
+/* Gantt: son tarih (milestone) */
+.ms {
+  position: absolute; width: 14px; height: 14px; margin-left: -7px; margin-top: calc((var(--row-h) - 14px) / 2);
+  transform: rotate(45deg); background: var(--c); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--c); z-index: 3; cursor: pointer;
+}
+.ms.overdue { background: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.ms.done { opacity: .5; }
+.ms.sel { outline: 2px solid var(--text); outline-offset: 2px; }
+.ms-lbl { position: absolute; font-size: 12px; line-height: var(--row-h); color: var(--text); white-space: nowrap; pointer-events: none; z-index: 2; }

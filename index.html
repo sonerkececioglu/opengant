@@ -58,11 +58,12 @@
     <div class="todo-wrap">
       <form id="todoForm" class="todo-add">
         <input id="todoInput" placeholder="Yeni iş ekle…" autocomplete="off">
+        <select id="todoProject" title="Proje"></select>
         <button class="primary">Ekle</button>
       </form>
       <label class="todo-filter"><input type="checkbox" id="showDone"> Tamamlananları göster</label>
       <ul id="todoList" class="todo-list"></ul>
-      <p class="hint">Tarihi olmayan işler burada listelenir. Bir işe tarih verdiğinde Gantt'ta görünür.</p>
+      <p class="hint">Başlangıç–bitiş aralığı olmayan işler burada listelenir. Son tarihi olan işler Gantt'ta ◆ olarak da görünür; aralık verdiğinde çubuk olur.</p>
     </div>
   </main>
 
@@ -73,7 +74,20 @@
       <h2 id="edTitle">Görev</h2>
       <p class="crumb" id="edPath"></p>
       <label>Başlık <input name="title" required autocomplete="off"></label>
-      <label>Üst öğe <select name="parent"></select></label>
+      <div class="row2">
+        <label>Proje / üst öğe <select name="parent"></select></label>
+        <div class="field">
+          <span>Kategori</span>
+          <div class="cat-pick">
+            <select name="category"></select>
+            <button type="button" id="catNewBtn" title="Yeni kategori">＋</button>
+          </div>
+          <div class="cat-new" id="catNew" hidden>
+            <input id="catNewInput" placeholder="Ad · alt kategori için: İş / Müşteri A" autocomplete="off">
+            <button type="button" id="catNewOk">Ekle</button>
+          </div>
+        </div>
+      </div>
       <div class="row2">
         <label>Başlangıç <input type="datetime-local" name="start" step="900"></label>
         <label>Bitiş <input type="datetime-local" name="end" step="900"></label>
@@ -100,6 +114,16 @@
           </div>
         </div>
         <button type="button" data-q="clear" class="qd-clear">Tarihi kaldır</button>
+      </div>
+      <div class="field">
+        <span>Son tarih</span>
+        <div class="due-row">
+          <input type="date" name="due">
+          <button type="button" data-due="today">Bugün</button>
+          <button type="button" data-due="tomorrow">Yarın</button>
+          <button type="button" data-due="nextweek">Gelecek hafta</button>
+          <button type="button" data-due="clear">Kaldır</button>
+        </div>
       </div>
       <div class="field">
         <span>Renk</span>

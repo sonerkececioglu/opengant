@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import {
   COLORS, HOUR, DAY, newItem, byId, children, touch, removeItem, path, visibleRows, computeSpans, sampleState,
+  migrate, projects, categoryChildren, categoryPath, ensureCategoryPath,
 } from './model.js';
 import {
   pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput, FOREVER, addDays, addMonths,
@@ -103,7 +104,7 @@ function renderAll() {
 
 function renderTree() {
   els.tree.innerHTML = rows.map(({ item, depth, hasKids }) => `
-    <div class="t-row${item.id === selectedId ? ' sel' : ''}${item.done ? ' done' : ''}${depth === 0 ? ' root' : ''}" data-id="${item.id}" style="padding-left:${4 + depth * 16}px">
+    <div class="t-row${item.id === selectedId ? ' sel' : ''}${item.done ? ' done' : ''}${depth === 0 && (item.kind === 'project' || hasKids) ? ' root' : ''}" data-id="${item.id}" style="padding-left:${4 + depth * 16}px">
       <button class="caret${hasKids ? '' : ' empty'}" data-act="toggle" aria-label="Aç/kapa">${item.collapsed ? '▶' : '▼'}</button>
       <span class="dot" style="background:${item.color}"></span>
       <input type="checkbox" class="chk" data-act="done" ${item.done ? 'checked' : ''} aria-label="Tamamlandı">
@@ -163,8 +164,22 @@ function renderBars() {
   const rh = rowH();
   const from = view.origin, to = tOf(w);
   let html = '';
+  const now = Date.now();
   rows.forEach(({ item }, i) => {
     const sp = spans.get(item.id);
+    // Son tarih: o günün sonunda ◆
+    if (item.due != null) {
+      const t = dueEnd(item.due);
+      if (t >= from - DAY && t <= to + DAY) {
+        const cls = ['ms'];
+        if (!item.done && t < now) cls.push('overdue');
+        if (item.done) cls.push('done');
+        if (item.id === selectedId) cls.push('sel');
+        const x = xOf(t);
+        html += `<div class="${cls.join(' ')}" data-id="${item.id}" title="Son tarih: ${fmtDue(item.due)}" style="--c:${item.color};left:${x}px;top:${i * rh}px"></div>`;
+        if (sp?.start == null) html += `<div class="ms-lbl" style="left:${x + 12}px;top:${i * rh}px">${esc(item.title)}</div>`;
+      }
+    }
     if (!sp || sp.start == null) return;
     if (sp.end < from - DAY || sp.start > to + DAY) return;
     // Çok uzun çubukları (1 yıl, sonsuz) ekranın biraz dışında kırp: tarayıcı aşırı genişliği çizemez.
@@ -188,25 +203,72 @@ function renderBars() {
 
 function renderTodo() {
   const list = state.items
-    .filter(i => (view.showDone || !i.done) && spans.get(i.id)?.start == null && children(state, i.id).length === 0)
-    .sort((a, b) => (a.done - b.done) || (b.updatedAt - a.updatedAt));
+    .filter(i => (view.showDone || !i.done) && spans.get(i.id)?.start == null && children(state, i.id).length === 0 && i.kind !== 'project')
+    .sort((a, b) => (a.done - b.done) || ((a.due ?? Infinity) - (b.due ?? Infinity)) || (b.updatedAt - a.updatedAt));
   $('showDone').checked = view.showDone;
+  // Ekleme satırındaki proje seçimi (seçim korunur)
+  const sel = $('todoProject');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">Projesiz</option>' +
+    projects(state).map(p => `<option value="${p.id}">${esc(p.title)}</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';
+  const now = Date.now();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   els.todoList.innerHTML = list.map(i => {
     const p = path(state, i).join(' › ');
+    const chips = [];
+    if (i.due != null) {
+      const late = !i.done && dueEnd(i.due) < now;
+      const isToday = i.due === today.getTime();
+      chips.push(`<span class="chip ${late ? 'overdue' : isToday ? 'due-today' : ''}">${late ? 'Gecikti · ' : ''}${fmtDue(i.due)}</span>`);
+    }
+    if (i.categoryId) chips.push(`<span class="chip">${esc(categoryPath(state, i.categoryId))}</span>`);
+    if (p) chips.push(`<span class="chip">${esc(p)}</span>`);
     return `<li class="${i.done ? 'done' : ''}" data-id="${i.id}">
       <input type="checkbox" data-act="done" ${i.done ? 'checked' : ''} aria-label="Tamamlandı">
       <span class="dot" style="background:${i.color}"></span>
-      <span class="tl-main" data-act="edit"><span class="tl-title">${esc(i.title)}</span>${p ? `<span class="tl-path">${esc(p)}</span>` : ''}</span>
+      <span class="tl-main" data-act="edit"><span class="tl-title">${esc(i.title)}</span>${chips.length ? `<span class="tl-meta">${chips.join('')}</span>` : ''}</span>
     </li>`;
   }).join('');
+}
+
+// ---------------- Son tarih yardımcıları ----------------
+// Son tarih, günün başı (yerel 00:00) olarak saklanır; günün sonuna kadar geçerlidir.
+const dueEnd = t => addDays(t, 1);
+function fmtDue(t) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((t - today.getTime()) / DAY);
+  if (diff === 0) return 'Bugün';
+  if (diff === 1) return 'Yarın';
+  if (diff === -1) return 'Dün';
+  return new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' });
+}
+const dateToInput = t => (t == null ? '' : toInput(t).slice(0, 10));
+function dateFromInput(v) {
+  if (!v) return null;
+  const [y, m, d] = v.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
+// ---------------- Kategori seçimi ----------------
+function categoryOptions(selected) {
+  const opts = ['<option value="">— Kategori yok</option>'];
+  const walk = (pid, depth) => {
+    for (const c of categoryChildren(state, pid)) {
+      opts.push(`<option value="${c.id}"${c.id === selected ? ' selected' : ''}>${'\u00a0\u00a0'.repeat(depth * 2)}${depth ? '› ' : ''}${esc(c.name)}</option>`);
+      walk(c.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return opts.join('');
 }
 
 // ---------------- Seçim ----------------
 function select(id) {
   selectedId = id;
-  document.querySelectorAll('.bar.sel, .t-row.sel').forEach(e => e.classList.remove('sel'));
+  document.querySelectorAll('.bar.sel, .t-row.sel, .ms.sel').forEach(e => e.classList.remove('sel'));
   if (id) document.querySelectorAll(`[data-id="${id}"]`).forEach(e => {
-    if (e.classList.contains('bar') || e.classList.contains('t-row')) e.classList.add('sel');
+    if (e.classList.contains('bar') || e.classList.contains('t-row') || e.classList.contains('ms')) e.classList.add('sel');
   });
 }
 
@@ -259,8 +321,9 @@ function onDown(e, area) {
   }
   if (pointers.size > 2) return;
 
-  const barEl = area === 'chart' ? e.target.closest('.bar') : null;
-  const id = barEl?.dataset.id;
+  const hitEl = area === 'chart' ? e.target.closest('.bar, .ms') : null;
+  const barEl = hitEl?.classList.contains('bar') ? hitEl : null;
+  const id = hitEl?.dataset.id;
   const sp = id ? spans.get(id) : null;
   const handle = e.target.dataset.h || null;
   const canDrag = barEl && sp && (e.pointerType === 'mouse' || id === selectedId);
@@ -480,14 +543,19 @@ function descendantIds(id) {
   return out;
 }
 
+// To-do (aralığı ve alt görevi olmayan, proje olmayan iş): sadece projeler listelenir.
+// Gantt görevi: projeler ve altındaki görevler. Projesiz to-do'lar hiçbir zaman üst öğe olamaz.
 function parentOptions(item) {
   const banned = descendantIds(item.id);
-  const opts = ['<option value="">— (Kök: proje)</option>'];
+  const isTodo = item.kind !== 'project' && item.start == null && children(state, item.id).length === 0;
+  const rootLabel = item.parentId == null && item.kind === 'project' ? '— (Kök: proje)' : '— Projesiz';
+  const opts = [`<option value="">${rootLabel}</option>`];
   const walk = (pid, depth) => {
     for (const c of children(state, pid)) {
       if (banned.has(c.id)) continue;
-      opts.push(`<option value="${c.id}"${c.id === item.parentId ? ' selected' : ''}>${'  '.repeat(depth * 2)}${esc(c.title)}</option>`);
-      walk(c.id, depth + 1);
+      if (!pid && c.kind !== 'project' && children(state, c.id).length === 0) continue;
+      opts.push(`<option value="${c.id}"${c.id === item.parentId ? ' selected' : ''}>${'\u00a0\u00a0'.repeat(depth * 2)}${esc(c.title)}</option>`);
+      if (!isTodo) walk(c.id, depth + 1);
     }
   };
   walk(null, 0);
@@ -516,6 +584,10 @@ function openEditor(id, isNew = false) {
   f.progress.disabled = summary;
   $('progVal').textContent = `${summary ? Math.round(sp.progress) : (item.progress || 0)}%`;
   f.notes.value = item.notes || '';
+  f.due.value = dateToInput(item.due);
+  f.category.innerHTML = categoryOptions(item.categoryId || null);
+  $('catNew').hidden = true;
+  $('catNewInput').value = '';
   renderSwatches();
   els.editor.returnValue = '';
   resetQuick();
@@ -606,6 +678,41 @@ function checkEditorRange() {
 els.editForm.elements.start.addEventListener('input', () => { editing.datesTouched = true; checkEditorRange(); });
 els.editForm.elements.end.addEventListener('input', () => { editing.datesTouched = true; checkEditorRange(); });
 
+document.querySelector('.due-row').addEventListener('click', e => {
+  const q = e.target.dataset.due;
+  if (!q) return;
+  const f = els.editForm.elements;
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  const t = d.getTime();
+  if (q === 'clear') f.due.value = '';
+  else if (q === 'today') f.due.value = dateToInput(t);
+  else if (q === 'tomorrow') f.due.value = dateToInput(addDays(t, 1));
+  else if (q === 'nextweek') f.due.value = dateToInput(addDays(t, ((8 - d.getDay()) % 7) || 7)); // gelecek pazartesi
+});
+$('catNewBtn').addEventListener('click', () => {
+  const box = $('catNew');
+  box.hidden = !box.hidden;
+  if (!box.hidden) {
+    // Seçili kategori varsa yolunu başa yaz: alt kategori eklemek kolaylaşsın
+    const cur = els.editForm.elements.category.value;
+    $('catNewInput').value = cur ? `${categoryPath(state, cur).replaceAll(' › ', ' / ')} / ` : '';
+    $('catNewInput').focus();
+  }
+});
+function addCategoryFromInput() {
+  const v = $('catNewInput').value.trim();
+  if (!v) return;
+  const id = ensureCategoryPath(state, v);
+  const sel = els.editForm.elements.category;
+  sel.innerHTML = categoryOptions(id);
+  sel.value = id;
+  $('catNew').hidden = true;
+  $('catNewInput').value = '';
+  store.save(state);
+}
+$('catNewOk').addEventListener('click', addCategoryFromInput);
+$('catNewInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCategoryFromInput(); } });
+
 function applyEditor() {
   const item = byId(state, editing.id);
   if (!item) return;
@@ -614,6 +721,8 @@ function applyEditor() {
   item.color = editing.color;
   item.done = f.done.checked;
   item.notes = f.notes.value;
+  item.due = dateFromInput(f.due.value);
+  item.categoryId = f.category.value || null;
   if (!f.progress.disabled) item.progress = Number(f.progress.value);
   // Otomatik (alt görevlerden) aralığı olan üst öğede tarihe dokunulmadıysa kendi tarihi atanmaz.
   if (!(editing.auto && !editing.datesTouched)) {
@@ -627,6 +736,9 @@ function applyEditor() {
   if (newParent !== item.parentId) {
     const sib = state.items.filter(i => i.parentId === newParent && i.id !== item.id);
     item.parentId = newParent;
+    // Tür sadece kök seviyede anlamlı: köke çıkan öğe aralığı/alt görevi varsa proje, yoksa projesiz to-do
+    if (newParent) delete item.kind;
+    else item.kind = (item.start != null || children(state, item.id).length) ? 'project' : 'todo';
     item.order = sib.reduce((m, s) => Math.max(m, s.order ?? 0), 0) + 1;
     if (newParent) byId(state, newParent).collapsed = false;
   }
@@ -669,7 +781,7 @@ $('edAddChild').addEventListener('click', () => {
 
 // ---------------- Araç çubuğu ----------------
 $('addProject').addEventListener('click', () => {
-  const p = newItem(state, null);
+  const p = newItem(state, null, { kind: 'project' });
   store.save(state);
   renderAll();
   openEditor(p.id, true);
@@ -693,7 +805,7 @@ $('importFile').addEventListener('change', async e => {
   try {
     const data = await store.importJson(file);
     if (!confirm(`${data.items.length} öğe içe aktarılacak. Mevcut veriler bununla değiştirilsin mi?`)) return;
-    state = data;
+    state = migrate(data);
     selectedId = null;
     commit();
   } catch (err) {
@@ -708,7 +820,8 @@ $('todoForm').addEventListener('submit', e => {
   e.preventDefault();
   const v = $('todoInput').value.trim();
   if (!v) return;
-  newItem(state, null, { title: v });
+  const pid = $('todoProject').value || null;
+  newItem(state, pid, { title: v, ...(pid ? {} : { kind: 'todo' }) });
   $('todoInput').value = '';
   commit();
 });
@@ -728,6 +841,7 @@ async function init() {
     state = sampleState();
     store.save(state);
   }
+  migrate(state);
   if (view.origin == null) {
     view.origin = Date.now() - (Math.max(chartWidth(), 600) * 0.2) / view.pxPerMs;
   }

@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import {
   COLORS, HOUR, DAY, newItem, byId, children, touch, removeItem, path, visibleRows, computeSpans, sampleState,
-  migrate, projects, categoryChildren, categoryPath, ensureCategoryPath,
+  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath,
 } from './model.js';
 import {
   pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput, FOREVER, addDays, addMonths,
@@ -106,10 +106,10 @@ function renderTree() {
   els.tree.innerHTML = rows.map(({ item, depth, hasKids }) => `
     <div class="t-row${item.id === selectedId ? ' sel' : ''}${item.done ? ' done' : ''}${depth === 0 && (item.kind === 'project' || hasKids) ? ' root' : ''}" data-id="${item.id}" style="padding-left:${4 + depth * 16}px">
       <button class="caret${hasKids ? '' : ' empty'}" data-act="toggle" aria-label="Aç/kapa">${item.collapsed ? '▶' : '▼'}</button>
-      <span class="dot" style="background:${item.color}"></span>
+      <span class="dot" style="${isTodo(item) ? `border:2px solid ${item.color};background:transparent` : `background:${item.color}`}"></span>
       <input type="checkbox" class="chk" data-act="done" ${item.done ? 'checked' : ''} aria-label="Tamamlandı">
       <span class="title" data-act="edit" title="${esc(item.title)}">${esc(item.title)}</span>
-      <button class="add" data-act="add" title="Alt görev ekle">＋</button>
+      ${isTodo(item) ? '' : '<button class="add" data-act="add" title="Alt görev ekle">＋</button>'}
     </div>`).join('');
   const h = rows.length * rowH();
   els.chart.style.height = `max(${h}px, calc(100vh - 140px))`;
@@ -172,6 +172,7 @@ function renderBars() {
       const t = dueEnd(item.due);
       if (t >= from - DAY && t <= to + DAY) {
         const cls = ['ms'];
+        if (isTodo(item)) cls.push('dot-ms');
         if (!item.done && t < now) cls.push('overdue');
         if (item.done) cls.push('done');
         if (item.id === selectedId) cls.push('sel');
@@ -203,7 +204,7 @@ function renderBars() {
 
 function renderTodo() {
   const list = state.items
-    .filter(i => (view.showDone || !i.done) && spans.get(i.id)?.start == null && children(state, i.id).length === 0 && i.kind !== 'project')
+    .filter(i => isTodo(i) && (view.showDone || !i.done))
     .sort((a, b) => (a.done - b.done) || ((a.due ?? Infinity) - (b.due ?? Infinity)) || (b.updatedAt - a.updatedAt));
   $('showDone').checked = view.showDone;
   // Ekleme satırındaki proje seçimi (seçim korunur)
@@ -212,6 +213,10 @@ function renderTodo() {
   sel.innerHTML = '<option value="">Projesiz</option>' +
     projects(state).map(p => `<option value="${p.id}">${esc(p.title)}</option>`).join('');
   sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';
+  const csel = $('todoCategory');
+  const ckeep = csel.value;
+  csel.innerHTML = categoryOptions(null).replace('— Kategori yok', 'Kategorisiz');
+  csel.value = [...csel.options].some(o => o.value === ckeep) ? ckeep : '';
   const now = Date.now();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   els.todoList.innerHTML = list.map(i => {
@@ -460,7 +465,7 @@ function quickCreate(e) {
   const r = rows[i];
   if (!r) return;
   const sp = spans.get(r.item.id);
-  if (sp.start != null || sp.summary) return;
+  if (isTodo(r.item) || sp.start != null || sp.summary) return;
   const step = snapStep(view.pxPerMs);
   const dur = step < HOUR ? HOUR : step < DAY ? DAY : 7 * DAY;
   const s = snap(tOf(e.clientX - rect.left) - dur / 2, step);
@@ -547,15 +552,15 @@ function descendantIds(id) {
 // Gantt görevi: projeler ve altındaki görevler. Projesiz to-do'lar hiçbir zaman üst öğe olamaz.
 function parentOptions(item) {
   const banned = descendantIds(item.id);
-  const isTodo = item.kind !== 'project' && item.start == null && children(state, item.id).length === 0;
-  const rootLabel = item.parentId == null && item.kind === 'project' ? '— (Kök: proje)' : '— Projesiz';
+  const todo = isTodo(item);
+  const rootLabel = todo ? '— Projesiz' : '— (Kök: proje)';
   const opts = [`<option value="">${rootLabel}</option>`];
   const walk = (pid, depth) => {
     for (const c of children(state, pid)) {
       if (banned.has(c.id)) continue;
-      if (!pid && c.kind !== 'project' && children(state, c.id).length === 0) continue;
+      if (isTodo(c)) continue; // to-do'nun altına bir şey eklenemez
       opts.push(`<option value="${c.id}"${c.id === item.parentId ? ' selected' : ''}>${'\u00a0\u00a0'.repeat(depth * 2)}${esc(c.title)}</option>`);
-      if (!isTodo) walk(c.id, depth + 1);
+      if (!todo) walk(c.id, depth + 1);
     }
   };
   walk(null, 0);
@@ -568,7 +573,9 @@ function openEditor(id, isNew = false) {
   const sp = spans.get(id) || computeSpans(state).get(id);
   const f = els.editForm.elements;
   editing = { id, isNew, color: item.color };
-  $('edTitle').textContent = isNew ? (item.parentId ? 'Yeni görev' : 'Yeni proje') : 'Düzenle';
+  const todo = isTodo(item);
+  $('edTitle').textContent = isNew ? (todo ? 'Yeni to-do' : item.parentId ? 'Yeni görev' : 'Yeni proje') : (todo ? 'To-do' : 'Düzenle');
+  $('edRange').hidden = $('quickDates').hidden = $('edProgress').hidden = $('edAddChild').hidden = todo;
   $('edPath').textContent = path(state, item).join(' › ');
   f.title.value = item.title;
   f.parent.innerHTML = parentOptions(item);
@@ -578,7 +585,7 @@ function openEditor(id, isNew = false) {
   editing.datesTouched = false;
   f.start.value = toInput(sp?.start ?? item.start);
   f.end.value = toInput(sp?.end ?? item.end);
-  $('edSummary').hidden = !editing.auto;
+  $('edSummary').hidden = !editing.auto || todo;
   f.done.checked = item.done;
   f.progress.value = item.progress || 0;
   f.progress.disabled = summary;
@@ -723,9 +730,10 @@ function applyEditor() {
   item.notes = f.notes.value;
   item.due = dateFromInput(f.due.value);
   item.categoryId = f.category.value || null;
-  if (!f.progress.disabled) item.progress = Number(f.progress.value);
+  if (!f.progress.disabled && !isTodo(item)) item.progress = Number(f.progress.value);
   // Otomatik (alt görevlerden) aralığı olan üst öğede tarihe dokunulmadıysa kendi tarihi atanmaz.
-  if (!(editing.auto && !editing.datesTouched)) {
+  if (isTodo(item)) { item.start = null; item.end = null; }
+  else if (!(editing.auto && !editing.datesTouched)) {
     let s = fromInput(f.start.value), en = fromInput(f.end.value);
     if (s != null && en == null) en = s + HOUR;
     if (en != null && s == null) s = en - HOUR;
@@ -736,9 +744,8 @@ function applyEditor() {
   if (newParent !== item.parentId) {
     const sib = state.items.filter(i => i.parentId === newParent && i.id !== item.id);
     item.parentId = newParent;
-    // Tür sadece kök seviyede anlamlı: köke çıkan öğe aralığı/alt görevi varsa proje, yoksa projesiz to-do
-    if (newParent) delete item.kind;
-    else item.kind = (item.start != null || children(state, item.id).length) ? 'project' : 'todo';
+    // To-do to-do olarak kalır. Proje bir projenin altına girerse görev, köke çıkan görev proje olur.
+    if (!isTodo(item)) item.kind = newParent ? 'task' : 'project';
     item.order = sib.reduce((m, s) => Math.max(m, s.order ?? 0), 0) + 1;
     if (newParent) byId(state, newParent).collapsed = false;
   }
@@ -821,7 +828,7 @@ $('todoForm').addEventListener('submit', e => {
   const v = $('todoInput').value.trim();
   if (!v) return;
   const pid = $('todoProject').value || null;
-  newItem(state, pid, { title: v, ...(pid ? {} : { kind: 'todo' }) });
+  newItem(state, pid, { title: v, kind: 'todo', categoryId: $('todoCategory').value || null });
   $('todoInput').value = '';
   commit();
 });
@@ -842,6 +849,7 @@ async function init() {
     store.save(state);
   }
   migrate(state);
+  store.save(state);
   if (view.origin == null) {
     view.origin = Date.now() - (Math.max(chartWidth(), 600) * 0.2) / view.pxPerMs;
   }

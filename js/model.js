@@ -15,7 +15,9 @@ export function newItem(state, parentId = null, fields = {}) {
   const item = {
     id: uid(),
     parentId,
-    title: parentId ? 'Yeni görev' : 'Yeni proje',
+    // Tür: 'project' (kök), 'task' (Gantt görevi, aralıklı), 'todo' (sadece son tarih). Oluşturulunca değişmez.
+    kind: fields.kind ?? (parentId ? 'task' : 'project'),
+    title: fields.kind === 'todo' ? 'Yeni iş' : parentId ? 'Yeni görev' : 'Yeni proje',
     start: null,
     end: null,
     color: parent ? parent.color : COLORS[siblings.length % COLORS.length],
@@ -138,13 +140,13 @@ export function sampleState() {
   newItem(s, a.id, { title: 'Ekranları çiz', start: t + 13 * HOUR, end: t + DAY + 11 * HOUR, progress: 40 });
   newItem(s, p.id, { title: 'Geliştirme', start: t + 2 * DAY, end: t + 6 * DAY, color: COLORS[1] });
   newItem(s, p.id, { title: 'Test', start: t + 6 * DAY, end: t + 7 * DAY + 12 * HOUR, color: COLORS[2] });
-  newItem(s, null, { title: 'Market alışverişi', color: COLORS[5] });
-  newItem(s, null, { title: 'Faturaları öde', color: COLORS[3], due: t + 2 * DAY });
+  newItem(s, null, { title: 'Market alışverişi', color: COLORS[5], kind: 'todo' });
+  newItem(s, null, { title: 'Faturaları öde', color: COLORS[3], due: t + 2 * DAY, kind: 'todo' });
   return s;
 }
 
 // ---------------- Proje / gelen kutusu ----------------
-// Kök seviyedeki öğe ya projedir (kind: 'project') ya da projesiz to-do'dur.
+// Kök seviyedeki öğe ya projedir (kind: 'project') ya da projesiz to-do'dur (kind: 'todo').
 // Projesiz to-do Gantt ağacında sadece tarihi (aralık ya da son tarih) varsa görünür.
 export function isProject(it) {
   return !it.parentId && it.kind === 'project';
@@ -152,6 +154,7 @@ export function isProject(it) {
 function showAtRoot(it, kids) {
   return it.kind === 'project' || kids.length > 0 || it.start != null || it.due != null;
 }
+export const isTodo = it => it.kind === 'todo';
 export function projects(state) {
   return children(state, null).filter(isProject);
 }
@@ -160,9 +163,13 @@ export function projects(state) {
 export function migrate(state) {
   if (!Array.isArray(state.categories)) state.categories = [];
   for (const it of state.items) {
-    if (it.parentId || it.kind) continue;
     const hasKids = state.items.some(k => k.parentId === it.id);
-    it.kind = hasKids || it.start != null ? 'project' : 'todo';
+    const ranged = it.start != null;
+    const asTask = it.parentId ? 'task' : 'project';
+    if (!it.kind) it.kind = hasKids || ranged ? asTask : 'todo';
+    // Onarım: to-do'nun aralığı ya da alt görevi olamaz; proje/görev sadece kendi seviyesinde
+    else if (it.kind === 'todo' && (hasKids || ranged)) it.kind = asTask;
+    else if (it.kind !== 'todo') it.kind = asTask;
   }
   return state;
 }

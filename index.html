@@ -59,11 +59,12 @@
       <form id="todoForm" class="todo-add">
         <input id="todoInput" placeholder="Yeni iş ekle…" autocomplete="off">
         <select id="todoProject" title="Proje"></select>
+        <select id="todoCategory" title="Kategori"></select>
         <button class="primary">Ekle</button>
       </form>
       <label class="todo-filter"><input type="checkbox" id="showDone"> Tamamlananları göster</label>
       <ul id="todoList" class="todo-list"></ul>
-      <p class="hint">Başlangıç–bitiş aralığı olmayan işler burada listelenir. Son tarihi olan işler Gantt'ta ◆ olarak da görünür; aralık verdiğinde çubuk olur.</p>
+      <p class="hint">To-do'ların başlangıç–bitişi yoktur, sadece son tarihi olabilir. Son tarihi olan to-do Gantt'ta o günde ● olarak görünür.</p>
     </div>
   </main>
 
@@ -88,7 +89,7 @@
           </div>
         </div>
       </div>
-      <div class="row2">
+      <div class="row2" id="edRange">
         <label>Başlangıç <input type="datetime-local" name="start" step="900"></label>
         <label>Bitiş <input type="datetime-local" name="end" step="900"></label>
       </div>
@@ -131,7 +132,7 @@
       </div>
       <div class="row2">
         <label class="check"><input type="checkbox" name="done"> Tamamlandı</label>
-        <label>İlerleme <span id="progVal">0%</span>
+        <label id="edProgress">İlerleme <span id="progVal">0%</span>
           <input type="range" name="progress" min="0" max="100" step="5">
         </label>
       </div>

@@ -188,6 +188,25 @@ export function categoryPath(state, id) {
   while (c) { parts.unshift(c.name); c = c.parentId ? categoryById(state, c.parentId) : null; }
   return parts.join(' › ');
 }
+// Kategori ve tüm alt kategorilerinin id'leri
+export function categoryDescendants(state, id) {
+  const ids = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const c of state.categories) {
+      if (c.parentId && ids.has(c.parentId) && !ids.has(c.id)) { ids.add(c.id); grew = true; }
+    }
+  }
+  return ids;
+}
+// Kategoriyi alt kategorileriyle siler; bu kategorilere bağlı öğeler kategorisiz kalır.
+export function deleteCategory(state, id) {
+  const ids = categoryDescendants(state, id);
+  state.categories = state.categories.filter(c => !ids.has(c.id));
+  for (const it of state.items) if (it.categoryId && ids.has(it.categoryId)) it.categoryId = null;
+}
+
 // "İş / Müşteri A" gibi bir yol: yoksa her seviyeyi oluşturur, son kategorinin id'sini döner.
 export function ensureCategoryPath(state, text) {
   const names = text.split(/[\/›>]/).map(t => t.trim()).filter(Boolean);

@@ -33,6 +33,7 @@
     <div class="tb-group">
       <button id="menuBtn" title="Menü">⋯</button>
       <div id="menu" class="menu" hidden>
+        <button id="catBtn">Kategoriler</button>
         <button id="exportBtn">JSON dışa aktar</button>
         <label class="menu-item">JSON içe aktar<input type="file" id="importFile" accept="application/json,.json" hidden></label>
         <button id="toggleTree" class="gantt-only">Görev panelini daralt/genişlet</button>
@@ -145,6 +146,21 @@
         <button value="save" class="primary">Kaydet</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="catDialog">
+    <div class="cat-dlg">
+      <h2>Kategoriler</h2>
+      <form id="catAddForm" class="cat-add">
+        <input id="catAddInput" placeholder="Yeni kategori · alt kategori için: İş / Müşteri A" autocomplete="off">
+        <button class="primary">Ekle</button>
+      </form>
+      <ul id="catList" class="cat-list"></ul>
+      <div class="ed-actions">
+        <span class="spacer"></span>
+        <button type="button" id="catClose">Kapat</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="help">

@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import {
   COLORS, HOUR, DAY, newItem, byId, children, touch, removeItem, path, visibleRows, computeSpans, sampleState,
-  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath,
+  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath, categoryById, categoryDescendants, deleteCategory,
 } from './model.js';
 import {
   pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput, FOREVER, addDays, addMonths,
@@ -803,6 +803,81 @@ $('today').addEventListener('click', goToday);
 const menu = $('menu');
 $('menuBtn').addEventListener('click', e => { e.stopPropagation(); menu.hidden = !menu.hidden; });
 document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.hidden = true; });
+// ---------------- Kategori yönetimi ----------------
+function renderCategories() {
+  const rows = [];
+  const walk = (pid, depth) => {
+    for (const c of categoryChildren(state, pid)) {
+      const ids = categoryDescendants(state, c.id);
+      const used = state.items.filter(i => i.categoryId && ids.has(i.categoryId)).length;
+      rows.push(`<li data-id="${c.id}" style="padding-left:${10 + depth * 20}px">
+        ${depth ? '<span class="cat-branch">›</span>' : ''}
+        <input class="cat-name" value="${esc(c.name)}" aria-label="Kategori adı">
+        <span class="cat-count">${used ? `${used} öğe` : ''}</span>
+        <button type="button" data-act="sub" title="Alt kategori ekle">＋ Alt</button>
+        <button type="button" data-act="del" class="danger" title="Sil">Sil</button>
+      </li>`);
+      walk(c.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  $('catList').innerHTML = rows.join('');
+}
+function categoriesChanged() {
+  store.save(state);
+  renderCategories();
+  renderAll();
+}
+$('catBtn').addEventListener('click', () => {
+  menu.hidden = true;
+  renderCategories();
+  $('catAddInput').value = '';
+  $('catDialog').showModal();
+});
+$('catClose').addEventListener('click', () => $('catDialog').close());
+$('catAddForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('catAddInput').value.trim();
+  if (!v) return;
+  ensureCategoryPath(state, v);
+  $('catAddInput').value = '';
+  categoriesChanged();
+});
+$('catList').addEventListener('click', e => {
+  const li = e.target.closest('li');
+  const act = e.target.dataset.act;
+  if (!li || !act) return;
+  const c = categoryById(state, li.dataset.id);
+  if (!c) return;
+  if (act === 'sub') {
+    const inp = $('catAddInput');
+    inp.value = `${categoryPath(state, c.id).replaceAll(' › ', ' / ')} / `;
+    inp.focus();
+  } else if (act === 'del') {
+    const ids = categoryDescendants(state, c.id);
+    const used = state.items.filter(i => i.categoryId && ids.has(i.categoryId)).length;
+    const parts = [`"${categoryPath(state, c.id)}" silinsin mi?`];
+    if (ids.size > 1) parts.push(`${ids.size - 1} alt kategorisi de silinecek.`);
+    if (used) parts.push(`${used} öğe kategorisiz kalacak (öğeler silinmez).`);
+    if (!confirm(parts.join('\n'))) return;
+    deleteCategory(state, c.id);
+    categoriesChanged();
+  }
+});
+// Yeniden adlandırma: alandan çıkınca ya da Enter'da kaydedilir; boş bırakılırsa eski ad geri gelir
+$('catList').addEventListener('change', e => {
+  if (!e.target.classList.contains('cat-name')) return;
+  const c = categoryById(state, e.target.closest('li').dataset.id);
+  const v = e.target.value.trim().replace(/[\/›>]/g, '-');
+  if (!c) return;
+  if (!v) { e.target.value = c.name; return; }
+  c.name = v;
+  categoriesChanged();
+});
+$('catList').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.classList.contains('cat-name')) { e.preventDefault(); e.target.blur(); }
+});
+
 $('exportBtn').addEventListener('click', () => { store.exportJson(state); menu.hidden = true; });
 $('importFile').addEventListener('change', async e => {
   const file = e.target.files[0];

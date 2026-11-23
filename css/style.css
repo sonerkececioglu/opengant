@@ -116,13 +116,17 @@ body.tree-narrow .t-row .chk, body.tree-narrow .t-row .add, body.tree-narrow .t-
 .bar.sel .h::after { content: ""; position: absolute; top: 25%; bottom: 25%; left: 4px; width: 3px; border-radius: 2px; background: rgba(255,255,255,.85); }
 .bar.dragging { cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
 .bar.summary {
-  height: 10px; margin-top: calc((var(--row-h) - 10px) / 2); border-radius: 2px; background: var(--c); filter: brightness(.8); cursor: pointer;
+  height: 16px; margin-top: calc((var(--row-h) - 16px) / 2); border-radius: 3px; background: var(--c); filter: brightness(.8); cursor: grab;
 }
 .bar.summary::before, .bar.summary::after { content: ""; position: absolute; bottom: -5px; border: 5px solid transparent; border-top-color: var(--c); }
 .bar.summary::before { left: 0; border-left-color: var(--c); }
 .bar.summary::after { right: 0; border-right-color: var(--c); }
-.bar.summary .lbl { left: calc(100% + 8px); right: auto; color: var(--text); line-height: 10px; overflow: visible; font-weight: 600; }
-.bar.summary .fill { border-radius: 2px; }
+.bar.summary .lbl { left: calc(100% + 8px); right: auto; color: var(--text); line-height: 16px; overflow: visible; font-weight: 600; }
+.bar.summary .fill { border-radius: 3px; }
+/* İnce çubukta tutamaçların dokunma alanı dikeyde biraz taşar */
+.bar.summary .h { top: -6px; bottom: -6px; width: 14px; }
+.bar.summary .h.l { left: -5px; }
+.bar.summary .h.r { right: -5px; }
 
 .tip {
   position: fixed; z-index: 50; background: var(--text); color: #fff; font-size: 12px; padding: 5px 8px;

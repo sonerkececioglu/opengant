@@ -180,7 +180,7 @@ function renderBars() {
     html += `<div class="${cls.join(' ')}" data-id="${item.id}" style="--c:${item.color};left:${x}px;width:${bw}px;top:${i * rh}px">
       <div class="fill" style="width:${Math.min(100, sp.progress)}%"></div>
       <div class="lbl">${sp.outCount ? `<span class="warn-ic" title="${sp.outCount} alt görev bu aralığın dışında">⚠</span> ` : ""}${esc(item.title)}</div>
-      ${sp.summary ? '' : '<div class="h l" data-h="l"></div><div class="h r" data-h="r"></div>'}
+      <div class="h l" data-h="l"></div><div class="h r" data-h="r"></div>
     </div>`;
   });
   els.bars.innerHTML = html;
@@ -263,14 +263,19 @@ function onDown(e, area) {
   const id = barEl?.dataset.id;
   const sp = id ? spans.get(id) : null;
   const handle = e.target.dataset.h || null;
-  const canDrag = barEl && sp && !sp.summary && (e.pointerType === 'mouse' || id === selectedId);
+  const canDrag = barEl && sp && (e.pointerType === 'mouse' || id === selectedId);
 
   try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* yok say */ }
 
   if (canDrag) {
     e.preventDefault();
     const item = byId(state, id);
-    gesture = { type: 'drag', area, id, el: barEl, mode: handle || 'move', x0: e.clientX, y0: e.clientY, s0: item.start, e0: item.end, moved: false };
+    // Üst öğe de sürüklenir: sadece kendisi kayar, alt görevler yerinde kalır.
+    // Kendi tarihi yoksa (alt görevlerden hesaplanan) görünen aralıktan başlar ve sürüklenince sabitlenir.
+    gesture = {
+      type: 'drag', area, id, el: barEl, mode: handle || 'move', x0: e.clientX, y0: e.clientY,
+      s0: sp.start, e0: sp.end, os0: item.start, oe0: item.end, moved: false,
+    };
   } else {
     gesture = {
       type: 'pan', area, id, x0: e.clientX, y0: e.clientY, o0: view.origin, st0: els.scroller.scrollTop,
@@ -380,7 +385,7 @@ function onUp(e) {
 function cancelDrag(g = gesture) {
   if (!g || g.type !== 'drag') return;
   const item = byId(state, g.id);
-  item.start = g.s0; item.end = g.e0;
+  item.start = g.os0; item.end = g.oe0;
   hideTip();
   renderBars();
 }

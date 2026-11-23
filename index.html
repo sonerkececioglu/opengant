@@ -80,13 +80,25 @@
       </div>
       <p class="hint" id="edSummary" hidden>Bu öğenin tarihleri alt görevlerinden hesaplanıyor.</p>
       <div class="quick-dates" id="quickDates">
-        <button type="button" data-q="hour">1 saat</button>
-        <button type="button" data-q="day">1 gün</button>
-        <button type="button" data-q="week">1 hafta</button>
-        <button type="button" data-q="month">1 ay</button>
-        <button type="button" data-q="year">1 yıl</button>
-        <button type="button" data-q="forever">Sonsuz</button>
-        <button type="button" data-q="clear">Tarihi kaldır</button>
+        <div class="qd-row">
+          <span class="qd-label">Başla</span>
+          <div class="seg" id="qdStart">
+            <button type="button" data-start="now" class="active">Şimdi</button>
+            <button type="button" data-start="tonight">Bu gece 00:00</button>
+          </div>
+        </div>
+        <div class="qd-row">
+          <span class="qd-label">Süre</span>
+          <div class="qd-durs">
+            <button type="button" data-q="hour">1 saat</button>
+            <button type="button" data-q="day">1 gün</button>
+            <button type="button" data-q="week">1 hafta</button>
+            <button type="button" data-q="month">1 ay</button>
+            <button type="button" data-q="year">1 yıl</button>
+            <button type="button" data-q="forever">Sonsuz</button>
+          </div>
+        </div>
+        <button type="button" data-q="clear" class="qd-clear">Tarihi kaldır</button>
       </div>
       <div class="field">
         <span>Renk</span>

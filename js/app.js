@@ -509,6 +509,7 @@ function openEditor(id, isNew = false) {
   f.notes.value = item.notes || '';
   renderSwatches();
   els.editor.returnValue = '';
+  resetQuick();
   els.editor.showModal();
   if (isNew) { f.title.select(); }
 }
@@ -525,22 +526,43 @@ $('swatches').addEventListener('click', e => {
 });
 els.editForm.elements.progress.addEventListener('input', e => { $('progVal').textContent = `${e.target.value}%`; });
 
-$('quickDates').addEventListener('click', e => {
-  const q = e.target.dataset.q;
-  if (!q) return;
+// Hızlı tarihler: başlangıç (şimdi / bu gece) + süre. Başlangıç değişince seçili süre yeniden uygulanır.
+const quick = { start: 'now', dur: null };
+function renderQuick() {
+  document.querySelectorAll('#qdStart button').forEach(b => b.classList.toggle('active', b.dataset.start === quick.start));
+  document.querySelectorAll('#quickDates .qd-durs button').forEach(b => b.classList.toggle('active', b.dataset.q === quick.dur));
+}
+function resetQuick() { quick.start = 'now'; quick.dur = null; renderQuick(); }
+function applyQuick() {
   const f = els.editForm.elements;
-  const d = new Date(); d.setHours(0, 0, 0, 0);
-  const today = d.getTime();
+  const q = quick.dur;
+  if (!q) return;
   let s = null, en = null;
-  // Hepsi bugünden başlar (1 saat: şu andan).
-  if (q === 'hour') { s = snap(Date.now(), 15 * 60e3); en = s + HOUR; }
-  else if (q === 'day') { s = today; en = addDays(today, 1); }
-  else if (q === 'week') { s = today; en = addDays(today, 7); }
-  else if (q === 'month') { s = today; en = addMonths(today, 1); }
-  else if (q === 'year') { s = today; en = addMonths(today, 12); }
-  else if (q === 'forever') { s = today; en = FOREVER; }
+  if (q !== 'clear') {
+    if (quick.start === 'now') s = snap(Date.now(), 15 * 60e3);
+    else { const d = new Date(); d.setHours(0, 0, 0, 0); s = addDays(d.getTime(), 1); }
+    if (q === 'hour') en = s + HOUR;
+    else if (q === 'day') en = addDays(s, 1);
+    else if (q === 'week') en = addDays(s, 7);
+    else if (q === 'month') en = addMonths(s, 1);
+    else if (q === 'year') en = addMonths(s, 12);
+    else if (q === 'forever') en = FOREVER;
+  }
   f.start.value = toInput(s);
   f.end.value = toInput(en);
+}
+$('quickDates').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.start) {
+    quick.start = b.dataset.start;
+    if (quick.dur === 'clear') quick.dur = null;
+  } else if (b.dataset.q) {
+    quick.dur = b.dataset.q;
+  } else return;
+  applyQuick();
+  if (quick.dur === 'clear') quick.dur = null;
+  renderQuick();
 });
 
 function applyEditor() {

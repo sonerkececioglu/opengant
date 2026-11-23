@@ -170,6 +170,8 @@ export function migrate(state) {
     // Onarım: to-do'nun aralığı ya da alt görevi olamaz; proje/görev sadece kendi seviyesinde
     else if (it.kind === 'todo' && (hasKids || ranged)) it.kind = asTask;
     else if (it.kind !== 'todo') it.kind = asTask;
+    if (it.parentId && it.categoryId) delete it.categoryId; // kategori projeden gelir
+    if (it.kind !== 'todo' && it.due != null) delete it.due; // son tarih sadece to-do'da
   }
   return state;
 }
@@ -188,6 +190,18 @@ export function categoryPath(state, id) {
   while (c) { parts.unshift(c.name); c = c.parentId ? categoryById(state, c.parentId) : null; }
   return parts.join(' › ');
 }
+// Kategori sadece projelere ve projesiz to-do'lara verilir.
+// Projeye bağlı görev ve to-do'lar kategorisini projesinden alır.
+export const canHaveCategory = it => !it.parentId;
+export function rootOf(state, it) {
+  let r = it;
+  while (r.parentId) { const p = byId(state, r.parentId); if (!p) break; r = p; }
+  return r;
+}
+export function effectiveCategoryId(state, it) {
+  return rootOf(state, it).categoryId || null;
+}
+
 // Kategori ve tüm alt kategorilerinin id'leri
 export function categoryDescendants(state, id) {
   const ids = new Set([id]);

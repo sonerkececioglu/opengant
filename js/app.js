@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import {
   COLORS, HOUR, DAY, newItem, byId, children, touch, removeItem, path, visibleRows, computeSpans, sampleState,
-  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath, categoryById, categoryDescendants, deleteCategory,
+  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath, categoryById, categoryDescendants, deleteCategory, canHaveCategory, effectiveCategoryId, rootOf,
 } from './model.js';
 import {
   pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput, FOREVER, addDays, addMonths,
@@ -167,12 +167,11 @@ function renderBars() {
   const now = Date.now();
   rows.forEach(({ item }, i) => {
     const sp = spans.get(item.id);
-    // Son tarih: o günün sonunda ◆
-    if (item.due != null) {
+    // To-do son tarihi: o günün sonunda ●
+    if (isTodo(item) && item.due != null) {
       const t = dueEnd(item.due);
       if (t >= from - DAY && t <= to + DAY) {
-        const cls = ['ms'];
-        if (isTodo(item)) cls.push('dot-ms');
+        const cls = ['ms', 'dot-ms'];
         if (!item.done && t < now) cls.push('overdue');
         if (item.done) cls.push('done');
         if (item.id === selectedId) cls.push('sel');
@@ -217,6 +216,7 @@ function renderTodo() {
   const ckeep = csel.value;
   csel.innerHTML = categoryOptions(null).replace('— Kategori yok', 'Kategorisiz');
   csel.value = [...csel.options].some(o => o.value === ckeep) ? ckeep : '';
+  syncTodoCategory();
   const now = Date.now();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   els.todoList.innerHTML = list.map(i => {
@@ -227,7 +227,8 @@ function renderTodo() {
       const isToday = i.due === today.getTime();
       chips.push(`<span class="chip ${late ? 'overdue' : isToday ? 'due-today' : ''}">${late ? 'Gecikti · ' : ''}${fmtDue(i.due)}</span>`);
     }
-    if (i.categoryId) chips.push(`<span class="chip">${esc(categoryPath(state, i.categoryId))}</span>`);
+    const cat = effectiveCategoryId(state, i);
+    if (cat) chips.push(`<span class="chip">${esc(categoryPath(state, cat))}</span>`);
     if (p) chips.push(`<span class="chip">${esc(p)}</span>`);
     return `<li class="${i.done ? 'done' : ''}" data-id="${i.id}">
       <input type="checkbox" data-act="done" ${i.done ? 'checked' : ''} aria-label="Tamamlandı">
@@ -576,6 +577,7 @@ function openEditor(id, isNew = false) {
   const todo = isTodo(item);
   $('edTitle').textContent = isNew ? (todo ? 'Yeni to-do' : item.parentId ? 'Yeni görev' : 'Yeni proje') : (todo ? 'To-do' : 'Düzenle');
   $('edRange').hidden = $('quickDates').hidden = $('edProgress').hidden = $('edAddChild').hidden = todo;
+  $('edDue').hidden = !todo;
   $('edPath').textContent = path(state, item).join(' › ');
   f.title.value = item.title;
   f.parent.innerHTML = parentOptions(item);
@@ -593,6 +595,7 @@ function openEditor(id, isNew = false) {
   f.notes.value = item.notes || '';
   f.due.value = dateToInput(item.due);
   f.category.innerHTML = categoryOptions(item.categoryId || null);
+  syncEditorCategory();
   $('catNew').hidden = true;
   $('catNewInput').value = '';
   renderSwatches();
@@ -728,8 +731,10 @@ function applyEditor() {
   item.color = editing.color;
   item.done = f.done.checked;
   item.notes = f.notes.value;
-  item.due = dateFromInput(f.due.value);
-  item.categoryId = f.category.value || null;
+  // Son tarih sadece to-do'da
+  if (isTodo(item)) item.due = dateFromInput(f.due.value);
+  else delete item.due;
+  item.categoryId = f.category.value || null; // üst öğe değişince aşağıda tekrar kontrol edilir
   if (!f.progress.disabled && !isTodo(item)) item.progress = Number(f.progress.value);
   // Otomatik (alt görevlerden) aralığı olan üst öğede tarihe dokunulmadıysa kendi tarihi atanmaz.
   if (isTodo(item)) { item.start = null; item.end = null; }
@@ -749,6 +754,7 @@ function applyEditor() {
     item.order = sib.reduce((m, s) => Math.max(m, s.order ?? 0), 0) + 1;
     if (newParent) byId(state, newParent).collapsed = false;
   }
+  if (!canHaveCategory(item)) delete item.categoryId;
   touch(item);
 }
 
@@ -803,6 +809,29 @@ $('today').addEventListener('click', goToday);
 const menu = $('menu');
 $('menuBtn').addEventListener('click', e => { e.stopPropagation(); menu.hidden = !menu.hidden; });
 document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.hidden = true; });
+// Kategori alanı: sadece proje / projesiz to-do için seçilebilir; diğerlerinde projeden geldiği gösterilir.
+function syncEditorCategory() {
+  const f = els.editForm.elements;
+  const item = byId(state, editing?.id);
+  if (!item) return;
+  const parentId = f.parent.value || null;
+  const own = !parentId;
+  $('edCatPick').hidden = !own;
+  if (!own) $('catNew').hidden = true;
+  const inh = $('edCatInherit');
+  inh.hidden = own;
+  if (!own) {
+    const root = rootOf(state, byId(state, parentId) || item);
+    inh.textContent = root.categoryId ? `${categoryPath(state, root.categoryId)} (projeden)` : 'Projeden gelir (projenin kategorisi yok)';
+  }
+}
+els.editForm.elements.parent.addEventListener('change', syncEditorCategory);
+function syncTodoCategory() {
+  const hasProject = !!$('todoProject').value;
+  $('todoCategory').hidden = hasProject;
+}
+$('todoProject').addEventListener('change', syncTodoCategory);
+
 // ---------------- Kategori yönetimi ----------------
 function renderCategories() {
   const rows = [];
@@ -903,7 +932,7 @@ $('todoForm').addEventListener('submit', e => {
   const v = $('todoInput').value.trim();
   if (!v) return;
   const pid = $('todoProject').value || null;
-  newItem(state, pid, { title: v, kind: 'todo', categoryId: $('todoCategory').value || null });
+  newItem(state, pid, { title: v, kind: 'todo', categoryId: pid ? null : ($('todoCategory').value || null) });
   $('todoInput').value = '';
   commit();
 });

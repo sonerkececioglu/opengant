@@ -65,7 +65,7 @@
       </form>
       <label class="todo-filter"><input type="checkbox" id="showDone"> Tamamlananları göster</label>
       <ul id="todoList" class="todo-list"></ul>
-      <p class="hint">To-do'ların başlangıç–bitişi yoktur, sadece son tarihi olabilir. Son tarihi olan to-do Gantt'ta o günde ● olarak görünür.</p>
+      <p class="hint">To-do'ların başlangıç–bitişi yoktur, sadece son tarihi olabilir. Son tarihi olan to-do Gantt'ta o günde ● olarak görünür. Projeye bağlı to-do kategorisini projeden alır.</p>
     </div>
   </main>
 
@@ -78,9 +78,10 @@
       <label>Başlık <input name="title" required autocomplete="off"></label>
       <div class="row2">
         <label>Proje / üst öğe <select name="parent"></select></label>
-        <div class="field">
+        <div class="field" id="edCatField">
           <span>Kategori</span>
-          <div class="cat-pick">
+          <p class="cat-inherit" id="edCatInherit" hidden></p>
+          <div class="cat-pick" id="edCatPick">
             <select name="category"></select>
             <button type="button" id="catNewBtn" title="Yeni kategori">＋</button>
           </div>
@@ -117,7 +118,7 @@
         </div>
         <button type="button" data-q="clear" class="qd-clear">Tarihi kaldır</button>
       </div>
-      <div class="field">
+      <div class="field" id="edDue">
         <span>Son tarih</span>
         <div class="due-row">
           <input type="date" name="due">

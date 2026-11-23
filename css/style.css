@@ -49,6 +49,7 @@ input, textarea { font: inherit; font-size: 14px; }
 .menu button, .menu-item { border: 0; text-align: left; padding: 9px 10px; border-radius: 6px; font-size: 14px; cursor: pointer; }
 .menu-item:hover { background: #eef1f6; }
 body.todo-mode .gantt-only { display: none; }
+.cockpit-bar[hidden] { display: none; }
 
 /* --- Gantt düzeni --- */
 main { flex: 1; min-height: 0; }
@@ -253,3 +254,11 @@ dialog form.cat-add { padding: 0; flex-direction: row; gap: 8px; }
 .cat-inherit { margin: 4px 0 0; padding: 8px 0; font-size: 14px; color: var(--text); }
 #edDue[hidden] { display: none; }
 dialog .due-row input[name=dueTime] { width: 7.5em; }
+
+/* Kokpit süzgeç çubuğu */
+.cockpit-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.cockpit-bar label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); }
+.cockpit-bar select { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--text); max-width: 180px; }
+.cockpit-bar button { font-size: 13px; padding: 5px 10px; }
+.cockpit-bar button[hidden] { display: none; }
+.cockpit-count { font-size: 12px; color: var(--muted); padding-bottom: 7px; }

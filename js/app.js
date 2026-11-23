@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import {
   COLORS, HOUR, DAY, newItem, byId, children, touch, removeItem, path, visibleRows, computeSpans, sampleState,
-  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath, categoryById, categoryDescendants, deleteCategory, canHaveCategory, effectiveCategoryId, rootOf,
+  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath, categoryById, categoryDescendants, deleteCategory, canHaveCategory, effectiveCategoryId, rootOf, cockpitRows,
 } from './model.js';
 import {
   pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput, FOREVER, addDays, addMonths,
@@ -35,13 +35,14 @@ function loadView() {
     mode: v.mode || 'gantt',
     treeNarrow: !!v.treeNarrow,
     showDone: !!v.showDone,
+    filter: { project: '', category: '', type: '', status: '', range: '', ...(v.filter || {}) },
   };
 }
 function saveView() {
   try {
     localStorage.setItem('gp-view', JSON.stringify({
       pxPerHour: view.pxPerMs * HOUR, origin: view.origin, mode: view.mode,
-      treeNarrow: view.treeNarrow, showDone: view.showDone,
+      treeNarrow: view.treeNarrow, showDone: view.showDone, filter: view.filter,
     }));
   } catch { /* yok say */ }
 }
@@ -86,14 +87,19 @@ function scheduleTime() {
 // ---------------- Çizim ----------------
 function renderAll() {
   spans = computeSpans(state);
-  rows = visibleRows(state);
+  const cockpit = view.mode === 'cockpit';
+  rows = cockpit ? cockpitRows(state, spans, view.filter) : visibleRows(state);
   document.body.classList.toggle('todo-mode', view.mode === 'todo');
+  document.body.classList.toggle('cockpit-mode', cockpit);
   document.body.classList.toggle('tree-narrow', view.treeNarrow);
-  $('ganttView').hidden = view.mode !== 'gantt';
+  $('ganttView').hidden = view.mode === 'todo';
   $('todoView').hidden = view.mode !== 'todo';
+  $('cockpitBar').hidden = !cockpit;
   $('viewGantt').classList.toggle('active', view.mode === 'gantt');
   $('viewTodo').classList.toggle('active', view.mode === 'todo');
-  if (view.mode === 'gantt') {
+  $('viewCockpit').classList.toggle('active', cockpit);
+  if (cockpit) renderCockpitBar();
+  if (view.mode !== 'todo') {
     renderTree();
     renderTime();
     renderBars();
@@ -519,7 +525,7 @@ els.timeHead.addEventListener('wheel', e => {
 }, { passive: false });
 
 addEventListener('resize', () => scheduleTime());
-setInterval(() => { if (view.mode === 'gantt') renderTime(); }, 60e3);
+setInterval(() => { if (view.mode !== 'todo') renderTime(); }, 60e3);
 
 // ---------------- Klavye ----------------
 addEventListener('keydown', e => {
@@ -809,6 +815,32 @@ $('addProject').addEventListener('click', () => {
 });
 $('viewGantt').addEventListener('click', () => { view.mode = 'gantt'; saveView(); renderAll(); });
 $('viewTodo').addEventListener('click', () => { view.mode = 'todo'; saveView(); renderAll(); });
+$('viewCockpit').addEventListener('click', () => { view.mode = 'cockpit'; saveView(); renderAll(); requestAnimationFrame(() => scheduleTime()); });
+$('viewGantt').addEventListener('click', () => requestAnimationFrame(() => scheduleTime()));
+
+// ---------------- Kokpit ----------------
+function renderCockpitBar() {
+  const f = view.filter;
+  const ps = $('fProject');
+  ps.innerHTML = '<option value="">Hepsi</option><option value="none">Projesiz</option>' +
+    projects(state).map(p => `<option value="${p.id}">${esc(p.title)}</option>`).join('');
+  ps.value = [...ps.options].some(o => o.value === f.project) ? f.project : (f.project = '');
+  const cs = $('fCategory');
+  cs.innerHTML = categoryOptions(null).replace('<option value="">— Kategori yok</option>', '<option value="">Hepsi</option><option value="none">Kategorisiz</option>');
+  cs.value = [...cs.options].some(o => o.value === f.category) ? f.category : (f.category = '');
+  $('fType').value = f.type; $('fStatus').value = f.status; $('fRange').value = f.range;
+  const n = rows.filter(r => r.item.kind !== 'project').length;
+  const active = Object.values(f).some(Boolean);
+  $('fCount').textContent = active ? `${n} iş` : '';
+  $('fClear').hidden = !active;
+}
+for (const [id, key] of [['fProject', 'project'], ['fCategory', 'category'], ['fType', 'type'], ['fStatus', 'status'], ['fRange', 'range']]) {
+  $(id).addEventListener('change', e => { view.filter[key] = e.target.value; saveView(); renderAll(); });
+}
+$('fClear').addEventListener('click', () => {
+  view.filter = { project: '', category: '', type: '', status: '', range: '' };
+  saveView(); renderAll();
+});
 document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => setZoom(PRESETS[b.dataset.zoom])));
 $('zoomIn').addEventListener('click', () => zoomAt(1.6, null));
 $('zoomOut').addEventListener('click', () => zoomAt(1 / 1.6, null));

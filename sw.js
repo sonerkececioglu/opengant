@@ -1,6 +1,6 @@
 // Önce ağ: çevrimiçiyken her zaman güncel dosyalar (eski/yeni karışmaz).
 // Önbellek sadece çevrimdışıyken kullanılır.
-const CACHE = 'gantt-planner-v11';
+const CACHE = 'gantt-planner-v12';
 const ASSETS = [
   './', 'index.html', 'css/style.css',
   'js/app.js', 'js/store.js', 'js/model.js', 'js/timescale.js',

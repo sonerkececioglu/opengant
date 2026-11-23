@@ -235,3 +235,84 @@ export function ensureCategoryPath(state, text) {
   }
   return cat ? cat.id : null;
 }
+
+// ---------------- Kokpit süzgeci ----------------
+// f: { project: '' | 'none' | id, category: '' | 'none' | id, type: '' | 'task' | 'todo',
+//      status: '' | 'open' | 'done' | 'late', range: '' | 'today' | 'week' | 'month' }
+// Eşleşen görev/to-do'lar ve onları içeren üst öğeler (bağlam için) satır olur.
+// Projesiz to-do'lar son tarihi olmasa da listelenir.
+export function cockpitRows(state, spans, f, now = Date.now()) {
+  const kidsOf = new Map();
+  for (const i of state.items) {
+    if (!kidsOf.has(i.parentId)) kidsOf.set(i.parentId, []);
+    kidsOf.get(i.parentId).push(i);
+  }
+  for (const arr of kidsOf.values()) arr.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const catSet = f.category && f.category !== 'none' ? categoryDescendants(state, f.category) : null;
+  const [ra, rb] = rangeBounds(f.range, now);
+  const dueDeadline = t => (t !== startOfDayMs(t) ? t : t + DAY);
+
+  const matches = it => {
+    const root = rootOf(state, it);
+    if (f.project === 'none' ? root.kind === 'project' : f.project && root.id !== f.project) return false;
+    const cat = root.categoryId || null;
+    if (f.category === 'none' ? cat : catSet && !(cat && catSet.has(cat))) return false;
+    if (f.type && it.kind !== f.type) return false;
+    if (f.status === 'open' && it.done) return false;
+    if (f.status === 'done' && !it.done) return false;
+    const sp = spans.get(it.id);
+    if (f.status === 'late') {
+      if (it.done) return false;
+      const late = it.kind === 'todo' ? it.due != null && dueDeadline(it.due) < now : sp?.end != null && sp.end < now;
+      if (!late) return false;
+    }
+    if (ra != null) {
+      if (it.kind === 'todo') { if (it.due == null || it.due < ra || it.due >= rb) return false; }
+      else if (sp?.start == null || sp.start >= rb || sp.end <= ra) return false;
+    }
+    return true;
+  };
+
+  // Eşleşenler + üst öğeleri
+  const keep = new Set();
+  for (const it of state.items) {
+    const leafLike = it.kind !== 'project';
+    // Proje kendi başına: sadece tür süzgeci yokken ve projede hiç öğe yokken eşleşebilir
+    const lonelyProject = it.kind === 'project' && !f.type && !(kidsOf.get(it.id) || []).length;
+    if ((leafLike || lonelyProject) && matches(it)) {
+      let p = it;
+      while (p && !keep.has(p.id)) { keep.add(p.id); p = p.parentId ? byId(state, p.parentId) : null; }
+    }
+  }
+
+  const rows = [];
+  const walk = (parentId, depth) => {
+    for (const it of kidsOf.get(parentId) || []) {
+      if (!keep.has(it.id)) continue;
+      const kids = (kidsOf.get(it.id) || []).filter(k => keep.has(k.id));
+      rows.push({ item: it, depth, hasKids: kids.length > 0 });
+      if (kids.length && !it.collapsed) walk(it.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return rows;
+}
+
+function startOfDayMs(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); }
+// Tarih aralığı: [başlangıç, bitiş) — hafta pazartesi başlar
+export function rangeBounds(range, now = Date.now()) {
+  if (!range) return [null, null];
+  const d = new Date(startOfDayMs(now));
+  if (range === 'today') return [d.getTime(), d.getTime() + DAY];
+  if (range === 'week') {
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const a = d.getTime(); d.setDate(d.getDate() + 7);
+    return [a, d.getTime()];
+  }
+  if (range === 'month') {
+    d.setDate(1); const a = d.getTime(); d.setMonth(d.getMonth() + 1);
+    return [a, d.getTime()];
+  }
+  return [null, null];
+}

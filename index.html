@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1f2a">
+  <title>Gantt Planner</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="tb-group">
+      <button id="addProject" class="primary" title="Yeni proje">＋ Proje</button>
+      <div class="seg" role="tablist">
+        <button id="viewGantt" class="active">Gantt</button>
+        <button id="viewTodo">To-do</button>
+      </div>
+    </div>
+    <div class="tb-group gantt-only" id="zoomGroup">
+      <div class="seg">
+        <button data-zoom="month">Ay</button>
+        <button data-zoom="week">Hafta</button>
+        <button data-zoom="day">Gün</button>
+        <button data-zoom="hour">Saat</button>
+      </div>
+      <button id="zoomOut" title="Uzaklaş">−</button>
+      <button id="zoomIn" title="Yakınlaş">＋</button>
+      <button id="today">Bugün</button>
+    </div>
+    <div class="tb-group">
+      <button id="menuBtn" title="Menü">⋯</button>
+      <div id="menu" class="menu" hidden>
+        <button id="exportBtn">JSON dışa aktar</button>
+        <label class="menu-item">JSON içe aktar<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+        <button id="toggleTree" class="gantt-only">Görev panelini daralt/genişlet</button>
+        <button id="helpBtn">Kısayollar</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="ganttView">
+    <div class="scroller" id="scroller">
+      <div class="tree-head">Görevler</div>
+      <div class="time-head" id="timeHead"></div>
+      <div class="tree" id="tree"></div>
+      <div class="chart" id="chart">
+        <div class="grid" id="grid"></div>
+        <div class="bars" id="bars"></div>
+        <div class="now-line" id="nowLine"></div>
+      </div>
+    </div>
+  </main>
+
+  <main id="todoView" hidden>
+    <div class="todo-wrap">
+      <form id="todoForm" class="todo-add">
+        <input id="todoInput" placeholder="Yeni iş ekle…" autocomplete="off">
+        <button class="primary">Ekle</button>
+      </form>
+      <label class="todo-filter"><input type="checkbox" id="showDone"> Tamamlananları göster</label>
+      <ul id="todoList" class="todo-list"></ul>
+      <p class="hint">Tarihi olmayan işler burada listelenir. Bir işe tarih verdiğinde Gantt'ta görünür.</p>
+    </div>
+  </main>
+
+  <div id="tip" class="tip" hidden></div>
+
+  <dialog id="editor">
+    <form method="dialog" id="editForm">
+      <h2 id="edTitle">Görev</h2>
+      <p class="crumb" id="edPath"></p>
+      <label>Başlık <input name="title" required autocomplete="off"></label>
+      <label>Üst öğe <select name="parent"></select></label>
+      <div class="row2">
+        <label>Başlangıç <input type="datetime-local" name="start" step="900"></label>
+        <label>Bitiş <input type="datetime-local" name="end" step="900"></label>
+      </div>
+      <p class="hint" id="edSummary" hidden>Bu öğenin tarihleri alt görevlerinden hesaplanıyor.</p>
+      <div class="quick-dates" id="quickDates">
+        <button type="button" data-q="now1h">Şimdi +1 sa</button>
+        <button type="button" data-q="today">Bugün</button>
+        <button type="button" data-q="tomorrow">Yarın</button>
+        <button type="button" data-q="week">Bu hafta</button>
+        <button type="button" data-q="clear">Tarihi kaldır</button>
+      </div>
+      <div class="field">
+        <span>Renk</span>
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <div class="row2">
+        <label class="check"><input type="checkbox" name="done"> Tamamlandı</label>
+        <label>İlerleme <span id="progVal">0%</span>
+          <input type="range" name="progress" min="0" max="100" step="5">
+        </label>
+      </div>
+      <label>Not <textarea name="notes" rows="3"></textarea></label>
+      <div class="ed-actions">
+        <button type="button" id="edDelete" class="danger">Sil</button>
+        <button type="button" id="edAddChild">＋ Alt görev</button>
+        <span class="spacer"></span>
+        <button value="cancel" formnovalidate>İptal</button>
+        <button value="save" class="primary">Kaydet</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="help">
+    <form method="dialog">
+      <h2>Kullanım</h2>
+      <ul class="help-list">
+        <li><b>Zoom:</b> Ctrl + tekerlek, zaman başlığında tekerlek ya da telefonda iki parmak.</li>
+        <li><b>Kaydırma:</b> Boş alanı sürükle, Shift + tekerlek ya da dokunmatik yüzeyde yatay kaydır.</li>
+        <li><b>Çubuk:</b> Ortasından sürükle = taşı, kenarlarından = uzat/kısalt. Telefonda önce bir kez dokunup seç, sonra sürükle.</li>
+        <li><b>Düzenle:</b> Çubuğa çift tıkla ya da soldaki başlığa tıkla.</li>
+        <li><b>Hızlı tarih:</b> Tarihsiz bir satırın boş alanına çift tıkla.</li>
+        <li><b>Seçili çubuk:</b> Delete = sil, Enter = düzenle, Esc = seçimi kaldır.</li>
+      </ul>
+      <div class="ed-actions"><span class="spacer"></span><button class="primary">Tamam</button></div>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+// Görev modeli ve ağaç işlemleri
+
+export const COLORS = ['#4f7cff', '#22a06b', '#e5793a', '#d6455d', '#8e5cd9', '#1fa3b5', '#c49a1a', '#6b7280'];
+
+export const HOUR = 3600e3;
+export const DAY = 24 * HOUR;
+
+export function uid() {
+  return (crypto.randomUUID && crypto.randomUUID()) || Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+export function newItem(state, parentId = null, fields = {}) {
+  const siblings = state.items.filter(i => i.parentId === parentId);
+  const parent = parentId ? byId(state, parentId) : null;
+  const item = {
+    id: uid(),
+    parentId,
+    title: parentId ? 'Yeni görev' : 'Yeni proje',
+    start: null,
+    end: null,
+    color: parent ? parent.color : COLORS[siblings.length % COLORS.length],
+    notes: '',
+    done: false,
+    progress: 0,
+    collapsed: false,
+    order: siblings.reduce((m, s) => Math.max(m, s.order ?? 0), 0) + 1,
+    deps: [], // bağımlılıklar için ayrıldı (sonraki sürüm)
+    updatedAt: Date.now(),
+    ...fields,
+  };
+  state.items.push(item);
+  if (parent) parent.collapsed = false;
+  return item;
+}
+
+export function byId(state, id) {
+  return state.items.find(i => i.id === id);
+}
+
+export function children(state, id) {
+  return state.items.filter(i => i.parentId === id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+export function touch(item) {
+  item.updatedAt = Date.now();
+}
+
+export function removeItem(state, id) {
+  const ids = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const i of state.items) {
+      if (i.parentId && ids.has(i.parentId) && !ids.has(i.id)) { ids.add(i.id); grew = true; }
+    }
+  }
+  state.items = state.items.filter(i => !ids.has(i.id));
+}
+
+export function path(state, item) {
+  const parts = [];
+  let p = item.parentId ? byId(state, item.parentId) : null;
+  while (p) { parts.unshift(p.title); p = p.parentId ? byId(state, p.parentId) : null; }
+  return parts;
+}
+
+// Görünür satırlar (kapalı dalların altı gizli)
+export function visibleRows(state) {
+  const rows = [];
+  const walk = (parentId, depth) => {
+    for (const it of children(state, parentId)) {
+      const kids = children(state, it.id);
+      rows.push({ item: it, depth, hasKids: kids.length > 0 });
+      if (kids.length && !it.collapsed) walk(it.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return rows;
+}
+
+// Her öğe için zaman aralığı: alt görevi tarihliyse alt görevlerden hesaplanır (özet çubuk)
+export function computeSpans(state) {
+  const map = new Map();
+  const kidsOf = new Map();
+  for (const i of state.items) {
+    if (!kidsOf.has(i.parentId)) kidsOf.set(i.parentId, []);
+    kidsOf.get(i.parentId).push(i);
+  }
+  const calc = (it) => {
+    if (map.has(it.id)) return map.get(it.id);
+    let s = Infinity, e = -Infinity, pSum = 0, pW = 0;
+    for (const k of kidsOf.get(it.id) || []) {
+      const r = calc(k);
+      if (r.start != null) {
+        s = Math.min(s, r.start); e = Math.max(e, r.end);
+        const w = Math.max(r.end - r.start, 1);
+        pSum += r.progress * w; pW += w;
+      }
+    }
+    let res;
+    if (s !== Infinity) {
+      res = { start: s, end: e, summary: true, progress: pW ? pSum / pW : 0 };
+    } else if (it.start != null && it.end != null) {
+      res = { start: it.start, end: it.end, summary: false, progress: it.done ? 100 : (it.progress || 0) };
+    } else {
+      res = { start: null, end: null, summary: false, progress: it.done ? 100 : (it.progress || 0) };
+    }
+    map.set(it.id, res);
+    return res;
+  };
+  for (const i of state.items) calc(i);
+  return map;
+}
+
+export function sampleState() {
+  const s = { version: 1, items: [], updatedAt: Date.now() };
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const t = d0.getTime();
+  const p = newItem(s, null, { title: 'Örnek proje', color: COLORS[0] });
+  const a = newItem(s, p.id, { title: 'Planlama' });
+  newItem(s, a.id, { title: 'Kapsamı yaz', start: t + 9 * HOUR, end: t + 12 * HOUR, done: true });
+  newItem(s, a.id, { title: 'Ekranları çiz', start: t + 13 * HOUR, end: t + DAY + 11 * HOUR, progress: 40 });
+  newItem(s, p.id, { title: 'Geliştirme', start: t + 2 * DAY, end: t + 6 * DAY, color: COLORS[1] });
+  newItem(s, p.id, { title: 'Test', start: t + 6 * DAY, end: t + 7 * DAY + 12 * HOUR, color: COLORS[2] });
+  newItem(s, null, { title: 'Market alışverişi', color: COLORS[5] });
+  newItem(s, null, { title: 'Faturaları öde', color: COLORS[3] });
+  return s;
+}

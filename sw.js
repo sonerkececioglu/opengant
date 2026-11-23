@@ -1,5 +1,6 @@
-// Offline önbellek: önbellekten hemen yanıt ver, arka planda güncelle
-const CACHE = 'gantt-planner-v2';
+// Önce ağ: çevrimiçiyken her zaman güncel dosyalar (eski/yeni karışmaz).
+// Önbellek sadece çevrimdışıyken kullanılır.
+const CACHE = 'gantt-planner-v3';
 const ASSETS = [
   './', 'index.html', 'css/style.css',
   'js/app.js', 'js/store.js', 'js/model.js', 'js/timescale.js',
@@ -7,7 +8,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -22,12 +23,14 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   e.respondWith(
-    caches.open(CACHE).then(async cache => {
-      const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req)
-        .then(res => { if (res.ok) cache.put(req, res.clone()); return res; })
-        .catch(() => cached);
-      return cached || network;
-    }),
+    fetch(req, { cache: 'no-cache' })
+      .then(res => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req, { ignoreSearch: true })),
   );
 });

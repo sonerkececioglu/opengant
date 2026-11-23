@@ -535,7 +535,6 @@ $('quickDates').addEventListener('click', e => {
   // Hepsi bugünden başlar (1 saat: şu andan).
   if (q === 'hour') { s = snap(Date.now(), 15 * 60e3); en = s + HOUR; }
   else if (q === 'day') { s = today; en = addDays(today, 1); }
-  else if (q === 'twodays') { s = today; en = addDays(today, 2); }
   else if (q === 'week') { s = today; en = addDays(today, 7); }
   else if (q === 'month') { s = today; en = addMonths(today, 1); }
   else if (q === 'year') { s = today; en = addMonths(today, 12); }

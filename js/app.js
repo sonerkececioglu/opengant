@@ -167,12 +167,12 @@ function renderBars() {
   const now = Date.now();
   rows.forEach(({ item }, i) => {
     const sp = spans.get(item.id);
-    // To-do son tarihi: o günün sonunda ●
+    // To-do son tarihi: tarih + saatte ●
     if (isTodo(item) && item.due != null) {
-      const t = dueEnd(item.due);
+      const t = item.due;
       if (t >= from - DAY && t <= to + DAY) {
         const cls = ['ms', 'dot-ms'];
-        if (!item.done && t < now) cls.push('overdue');
+        if (!item.done && dueEnd(t) < now) cls.push('overdue');
         if (item.done) cls.push('done');
         if (item.id === selectedId) cls.push('sel');
         const x = xOf(t);
@@ -224,7 +224,7 @@ function renderTodo() {
     const chips = [];
     if (i.due != null) {
       const late = !i.done && dueEnd(i.due) < now;
-      const isToday = i.due === today.getTime();
+      const isToday = startOfDay(i.due) === today.getTime();
       chips.push(`<span class="chip ${late ? 'overdue' : isToday ? 'due-today' : ''}">${late ? 'Gecikti · ' : ''}${fmtDue(i.due)}</span>`);
     }
     const cat = effectiveCategoryId(state, i);
@@ -239,21 +239,28 @@ function renderTodo() {
 }
 
 // ---------------- Son tarih yardımcıları ----------------
-// Son tarih, günün başı (yerel 00:00) olarak saklanır; günün sonuna kadar geçerlidir.
-const dueEnd = t => addDays(t, 1);
+// Son tarih = tarih + saat (varsayılan 00:00). Saat 00:00 ise "o gün içinde" sayılır:
+// gün bitene kadar gecikmiş görünmez. Başka bir saat verilmişse o an son andır.
+const startOfDay = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const hasTime = t => t !== startOfDay(t);
+const dueEnd = t => (hasTime(t) ? t : addDays(t, 1));
 function fmtDue(t) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const diff = Math.round((t - today.getTime()) / DAY);
-  if (diff === 0) return 'Bugün';
-  if (diff === 1) return 'Yarın';
-  if (diff === -1) return 'Dün';
-  return new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' });
+  const diff = Math.round((startOfDay(t) - today.getTime()) / DAY);
+  let s;
+  if (diff === 0) s = 'Bugün';
+  else if (diff === 1) s = 'Yarın';
+  else if (diff === -1) s = 'Dün';
+  else s = new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' });
+  return hasTime(t) ? `${s} ${toInput(t).slice(11, 16)}` : s;
 }
 const dateToInput = t => (t == null ? '' : toInput(t).slice(0, 10));
-function dateFromInput(v) {
-  if (!v) return null;
-  const [y, m, d] = v.split('-').map(Number);
-  return new Date(y, m - 1, d).getTime();
+const timeToInput = t => (t == null ? '00:00' : toInput(t).slice(11, 16));
+function dueFromInputs(dateV, timeV) {
+  if (!dateV) return null;
+  const [y, m, d] = dateV.split('-').map(Number);
+  const [hh, mm] = (timeV || '00:00').split(':').map(Number);
+  return new Date(y, m - 1, d, hh || 0, mm || 0).getTime();
 }
 
 // ---------------- Kategori seçimi ----------------
@@ -594,6 +601,7 @@ function openEditor(id, isNew = false) {
   $('progVal').textContent = `${summary ? Math.round(sp.progress) : (item.progress || 0)}%`;
   f.notes.value = item.notes || '';
   f.due.value = dateToInput(item.due);
+  f.dueTime.value = timeToInput(item.due);
   f.category.innerHTML = categoryOptions(item.categoryId || null);
   syncEditorCategory();
   $('catNew').hidden = true;
@@ -694,7 +702,7 @@ document.querySelector('.due-row').addEventListener('click', e => {
   const f = els.editForm.elements;
   const d = new Date(); d.setHours(0, 0, 0, 0);
   const t = d.getTime();
-  if (q === 'clear') f.due.value = '';
+  if (q === 'clear') { f.due.value = ''; f.dueTime.value = '00:00'; }
   else if (q === 'today') f.due.value = dateToInput(t);
   else if (q === 'tomorrow') f.due.value = dateToInput(addDays(t, 1));
   else if (q === 'nextweek') f.due.value = dateToInput(addDays(t, ((8 - d.getDay()) % 7) || 7)); // gelecek pazartesi
@@ -732,7 +740,7 @@ function applyEditor() {
   item.done = f.done.checked;
   item.notes = f.notes.value;
   // Son tarih sadece to-do'da
-  if (isTodo(item)) item.due = dateFromInput(f.due.value);
+  if (isTodo(item)) item.due = dueFromInputs(f.due.value, f.dueTime.value);
   else delete item.due;
   item.categoryId = f.category.value || null; // üst öğe değişince aşağıda tekrar kontrol edilir
   if (!f.progress.disabled && !isTodo(item)) item.progress = Number(f.progress.value);

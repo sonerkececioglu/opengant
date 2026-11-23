@@ -252,3 +252,4 @@ dialog form.cat-add { padding: 0; flex-direction: row; gap: 8px; }
 #edCatPick[hidden], .cat-inherit[hidden], #todoCategory[hidden] { display: none; }
 .cat-inherit { margin: 4px 0 0; padding: 8px 0; font-size: 14px; color: var(--text); }
 #edDue[hidden] { display: none; }
+dialog .due-row input[name=dueTime] { width: 7.5em; }

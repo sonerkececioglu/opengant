@@ -57,6 +57,7 @@ export function removeItem(state, id) {
     }
   }
   state.items = state.items.filter(i => !ids.has(i.id));
+  for (const i of state.items) if (i.deps?.length) i.deps = i.deps.filter(d => !ids.has(d));
 }
 
 export function path(state, item) {
@@ -172,7 +173,11 @@ export function migrate(state) {
     else if (it.kind !== 'todo') it.kind = asTask;
     if (it.parentId && it.categoryId) delete it.categoryId; // kategori projeden gelir
     if (it.kind !== 'todo' && it.due != null) delete it.due; // son tarih sadece to-do'da
+    if (!Array.isArray(it.deps)) it.deps = [];
   }
+  // Bağımlılık: sadece görevler arasında, var olan öğelere
+  const tasks = new Set(state.items.filter(i => i.kind === 'task').map(i => i.id));
+  for (const it of state.items) it.deps = it.kind === 'task' ? it.deps.filter(d => tasks.has(d) && d !== it.id) : [];
   return state;
 }
 
@@ -315,4 +320,59 @@ export function rangeBounds(range, now = Date.now()) {
     return [a, d.getTime()];
   }
   return [null, null];
+}
+
+// ---------------- Bağımlılıklar (bitiş → başlangıç) ----------------
+// it.deps: önce bitmesi gereken görevlerin id'leri. Sadece görevler arasında.
+const isAncestor = (state, a, b) => { // a, b'nin üst öğelerinden biri mi
+  let p = b.parentId ? byId(state, b.parentId) : null;
+  while (p) { if (p.id === a.id) return true; p = p.parentId ? byId(state, p.parentId) : null; }
+  return false;
+};
+// a, (dolaylı olarak) b'ye bağımlı mı
+export function dependsOn(state, a, b, seen = new Set()) {
+  if (seen.has(a.id)) return false;
+  seen.add(a.id);
+  for (const d of a.deps || []) {
+    if (d === b.id) return true;
+    const p = byId(state, d);
+    if (p && dependsOn(state, p, b, seen)) return true;
+  }
+  return false;
+}
+// cand, item'ın öncülü olabilir mi
+export function canPrecede(state, item, cand) {
+  return cand.kind === 'task' && item.kind === 'task' && cand.id !== item.id &&
+    !isAncestor(state, cand, item) && !isAncestor(state, item, cand) && !dependsOn(state, cand, item);
+}
+// Öncüllerin en geç bitişi (yoksa null)
+export function predecessorsEnd(state, it, spans) {
+  let e = null;
+  for (const d of it.deps || []) {
+    const sp = spans.get(d);
+    if (sp?.end != null) e = e == null ? sp.end : Math.max(e, sp.end);
+  }
+  return e;
+}
+// Kuralı uygula: öncülü bitmeden başlayan görev, süresi korunarak ileri itilir (geri çekilmez).
+// Zincirleme etkiler için kararlı olana kadar tekrarlar. Değişen öğe sayısını döner.
+export function enforceDeps(state) {
+  let moved = 0;
+  for (let pass = 0; pass < state.items.length + 1; pass++) {
+    const spans = computeSpans(state);
+    let changed = false;
+    for (const it of state.items) {
+      if (it.kind !== 'task' || !it.deps?.length || it.start == null || it.end == null) continue;
+      const pe = predecessorsEnd(state, it, spans);
+      if (pe != null && it.start < pe && it.end < 9e15) {
+        const dur = it.end - it.start;
+        it.start = pe; it.end = pe + dur; it.updatedAt = Date.now();
+        changed = true; moved++;
+      } else if (pe != null && it.start < pe) { // sonsuz bitiş: sadece başlangıç
+        it.start = pe; changed = true; moved++;
+      }
+    }
+    if (!changed) break;
+  }
+  return moved;
 }

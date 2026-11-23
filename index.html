@@ -122,6 +122,11 @@
           </div>
         </div>
       </div>
+      <div class="field" id="edDeps">
+        <span>Önce bitmesi gereken</span>
+        <div class="dep-chips" id="depChips"></div>
+        <select id="depAdd"></select>
+      </div>
       <div class="row2" id="edRange">
         <label>Başlangıç <input type="datetime-local" name="start" step="900"></label>
         <label>Bitiş <input type="datetime-local" name="end" step="900"></label>
@@ -134,6 +139,7 @@
           <div class="seg" id="qdStart">
             <button type="button" data-start="now" class="active">Şimdi</button>
             <button type="button" data-start="tonight">Bu gece 00:00</button>
+            <button type="button" data-start="pred" id="qdPred">Öncül bitince</button>
           </div>
         </div>
         <div class="qd-row">

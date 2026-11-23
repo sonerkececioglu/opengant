@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import {
   COLORS, HOUR, DAY, newItem, byId, children, touch, removeItem, path, visibleRows, computeSpans, sampleState,
-  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath, categoryById, categoryDescendants, deleteCategory, canHaveCategory, effectiveCategoryId, rootOf, cockpitRows,
+  migrate, projects, isTodo, categoryChildren, categoryPath, ensureCategoryPath, categoryById, categoryDescendants, deleteCategory, canHaveCategory, effectiveCategoryId, rootOf, cockpitRows, canPrecede, predecessorsEnd, enforceDeps,
 } from './model.js';
 import {
   pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput, FOREVER, addDays, addMonths,
@@ -48,6 +48,7 @@ function saveView() {
 }
 
 function commit() {
+  enforceDeps(state);
   store.save(state);
   renderAll();
 }
@@ -204,7 +205,41 @@ function renderBars() {
       <div class="h l" data-h="l"></div><div class="h r" data-h="r"></div>
     </div>`;
   });
-  els.bars.innerHTML = html;
+  els.bars.innerHTML = html + depArrows(w, rh);
+}
+
+// Bağımlılık okları: öncülün bitişinden ardılın başlangıcına
+function depArrows(w, rh) {
+  const rowOf = new Map(rows.map((r, i) => [r.item.id, i]));
+  let paths = '';
+  for (const { item } of rows) {
+    if (!item.deps?.length) continue;
+    const sp = spans.get(item.id);
+    if (sp?.start == null) continue;
+    const i2 = rowOf.get(item.id);
+    for (const d of item.deps) {
+      const i1 = rowOf.get(d);
+      const ps = spans.get(d);
+      if (i1 == null || ps?.end == null) continue;
+      const x1 = Math.min(xOf(ps.end), w + 400), y1 = i1 * rh + rh / 2;
+      const x2 = Math.max(xOf(sp.start), -400), y2 = i2 * rh + rh / 2;
+      const bad = sp.start < ps.end;
+      // Yeterli boşluk varsa: sağa, aşağı/yukarı, ardıla. Yoksa satır arasından dolanarak.
+      let pd;
+      if (x2 - x1 >= 16) pd = `M${x1},${y1} H${x1 + 8} V${y2} H${x2 - 2}`;
+      else {
+        const yBetween = y2 > y1 ? y2 - rh / 2 : y2 + rh / 2;
+        pd = `M${x1},${y1} H${x1 + 8} V${yBetween} H${x2 - 10} V${y2} H${x2 - 2}`;
+      }
+      paths += `<path class="dep${bad ? ' bad' : ''}" d="${pd}" marker-end="url(#${bad ? 'arrBad' : 'arr'})"/>`;
+    }
+  }
+  if (!paths) return '';
+  return `<svg class="deps" width="${w}" height="${rows.length * rh}">
+    <defs>
+      <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#6b7280"/></marker>
+      <marker id="arrBad" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#d6455d"/></marker>
+    </defs>${paths}</svg>`;
 }
 
 function renderTodo() {
@@ -591,6 +626,9 @@ function openEditor(id, isNew = false) {
   $('edTitle').textContent = isNew ? (todo ? 'Yeni to-do' : item.parentId ? 'Yeni görev' : 'Yeni proje') : (todo ? 'To-do' : 'Düzenle');
   $('edRange').hidden = $('quickDates').hidden = $('edProgress').hidden = $('edAddChild').hidden = todo;
   $('edDue').hidden = !todo;
+  editing.deps = [...(item.deps || [])];
+  $('edDeps').hidden = item.kind !== 'task';
+  renderDeps();
   $('edPath').textContent = path(state, item).join(' › ');
   f.title.value = item.title;
   f.parent.innerHTML = parentOptions(item);
@@ -636,9 +674,14 @@ els.editForm.elements.progress.addEventListener('input', e => { $('progVal').tex
 const quick = { start: 'now', dur: null };
 function renderQuick() {
   document.querySelectorAll('#qdStart button').forEach(b => b.classList.toggle('active', b.dataset.start === quick.start));
+  $('qdPred').hidden = !editing?.deps?.length;
   document.querySelectorAll('#quickDates .qd-durs button').forEach(b => b.classList.toggle('active', b.dataset.q === quick.dur));
 }
 function resetQuick() { quick.start = 'now'; quick.dur = null; renderQuick(); }
+// Düzenleyicide seçili öncüllerin en geç bitişi
+function editorPredEnd() {
+  return editing?.deps?.length ? predecessorsEnd(state, { deps: editing.deps }, spans) : null;
+}
 function applyQuick() {
   const f = els.editForm.elements;
   const q = quick.dur;
@@ -646,6 +689,7 @@ function applyQuick() {
   let s = null, en = null;
   if (q !== 'clear') {
     if (quick.start === 'now') s = snap(Date.now(), 15 * 60e3);
+    else if (quick.start === 'pred') s = editorPredEnd() ?? snap(Date.now(), 15 * 60e3);
     else { const d = new Date(); d.setHours(0, 0, 0, 0); s = addDays(d.getTime(), 1); }
     if (q === 'hour') en = s + HOUR;
     else if (q === 'day') en = addDays(s, 1);
@@ -737,6 +781,59 @@ function addCategoryFromInput() {
 $('catNewOk').addEventListener('click', addCategoryFromInput);
 $('catNewInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCategoryFromInput(); } });
 
+// ---------------- Bağımlılık seçimi (düzenleyici) ----------------
+function renderDeps() {
+  const item = byId(state, editing?.id);
+  if (!item || item.kind !== 'task') return;
+  $('depChips').innerHTML = editing.deps.map(d => {
+    const t = byId(state, d);
+    return t ? `<span class="dep-chip">${esc([...path(state, t), t.title].join(' › '))}<button type="button" data-rm="${d}" aria-label="Kaldır">✕</button></span>` : '';
+  }).join('');
+  const opts = ['<option value="">＋ Görev seç…</option>'];
+  for (const p of projects(state)) {
+    const group = [];
+    const walk = pid => {
+      for (const c of children(state, pid)) {
+        if (c.kind === 'task' && !editing.deps.includes(c.id) && canPrecede(state, item, c)) {
+          group.push(`<option value="${c.id}">${esc([...path(state, c).slice(1), c.title].join(' › '))}</option>`);
+        }
+        walk(c.id);
+      }
+    };
+    walk(p.id);
+    if (group.length) opts.push(`<optgroup label="${esc(p.title)}">${group.join('')}</optgroup>`);
+  }
+  $('depAdd').innerHTML = opts.join('');
+  $('depAdd').disabled = opts.length === 1;
+  renderQuick();
+}
+// Öncül eklenince başlangıç öncüllerin bitişine çekilir (süre korunur); sadece ileri.
+function snapStartToPreds() {
+  const pe = editorPredEnd();
+  if (pe == null) return;
+  const f = els.editForm.elements;
+  const s = fromInput(f.start.value), en = fromInput(f.end.value);
+  if (s != null && s >= pe) return;
+  const dur = s != null && en != null && en > s ? en - s : HOUR;
+  f.start.value = toInput(pe);
+  f.end.value = toInput(en >= FOREVER ? en : pe + dur);
+  editing.datesTouched = true;
+  checkEditorRange();
+}
+$('depAdd').addEventListener('change', e => {
+  const v = e.target.value;
+  if (!v) return;
+  editing.deps.push(v);
+  renderDeps();
+  snapStartToPreds();
+});
+$('depChips').addEventListener('click', e => {
+  const id = e.target.dataset.rm;
+  if (!id) return;
+  editing.deps = editing.deps.filter(d => d !== id);
+  renderDeps();
+});
+
 function applyEditor() {
   const item = byId(state, editing.id);
   if (!item) return;
@@ -769,6 +866,7 @@ function applyEditor() {
     if (newParent) byId(state, newParent).collapsed = false;
   }
   if (!canHaveCategory(item)) delete item.categoryId;
+  item.deps = item.kind === 'task' ? (editing.deps || []).filter(d => { const c = byId(state, d); return c && canPrecede(state, item, c); }) : [];
   touch(item);
 }
 

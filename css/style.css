@@ -262,3 +262,14 @@ dialog .due-row input[name=dueTime] { width: 7.5em; }
 .cockpit-bar button { font-size: 13px; padding: 5px 10px; }
 .cockpit-bar button[hidden] { display: none; }
 .cockpit-count { font-size: 12px; color: var(--muted); padding-bottom: 7px; }
+
+/* Bağımlılıklar */
+#edDeps[hidden], #qdPred[hidden] { display: none; }
+.dep-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.dep-chips:empty { display: none; }
+.dep-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 9px; border-radius: 12px; background: #e8eeff; color: var(--accent); }
+.dep-chip button { border: 0; background: transparent; color: inherit; padding: 0 4px; font-size: 11px; line-height: 1; }
+#depAdd { width: 100%; }
+svg.deps { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 1; }
+svg.deps path.dep { fill: none; stroke: #6b7280; stroke-width: 1.5; }
+svg.deps path.dep.bad { stroke: var(--danger); stroke-dasharray: 4 3; }

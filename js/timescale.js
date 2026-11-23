@@ -117,7 +117,29 @@ export function fmtDateTime(t) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// "Sonsuz" bitiş: datetime-local alanının gösterebileceği son gün.
+export const FOREVER = new Date(9999, 11, 31).getTime();
+
+// Takvim günü ekler (yaz saati değişimlerinde de gece yarısında kalır).
+export function addDays(t, n) {
+  const d = new Date(t);
+  d.setDate(d.getDate() + n);
+  return d.getTime();
+}
+
+// Takvim ayı ekler; 31 Ocak + 1 ay = 28/29 Şubat (taşmaz).
+export function addMonths(t, n) {
+  const d = new Date(t);
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + n);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, last));
+  return d.getTime();
+}
+
 export function fmtRange(s, e) {
+  if (e >= FOREVER) return `${fmtDateTime(s)} → ∞ (sonsuz)`;
   const dur = e - s;
   let durTxt;
   if (dur < DAY) {

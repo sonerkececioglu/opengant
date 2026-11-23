@@ -1,5 +1,5 @@
 // Offline önbellek: önbellekten hemen yanıt ver, arka planda güncelle
-const CACHE = 'gantt-planner-v1';
+const CACHE = 'gantt-planner-v2';
 const ASSETS = [
   './', 'index.html', 'css/style.css',
   'js/app.js', 'js/store.js', 'js/model.js', 'js/timescale.js',

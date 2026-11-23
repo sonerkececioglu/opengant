@@ -3,7 +3,7 @@ import {
   COLORS, HOUR, DAY, newItem, byId, children, touch, removeItem, path, visibleRows, computeSpans, sampleState,
 } from './model.js';
 import {
-  pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput,
+  pickUnits, ticks, fineLabel, coarseLabel, snapStep, snap, fmtRange, toInput, fromInput, FOREVER, addDays, addMonths,
 } from './timescale.js';
 
 const $ = id => document.getElementById(id);
@@ -167,8 +167,9 @@ function renderBars() {
     const sp = spans.get(item.id);
     if (!sp || sp.start == null) return;
     if (sp.end < from - DAY || sp.start > to + DAY) return;
-    const x = xOf(sp.start);
-    const bw = Math.max(4, (sp.end - sp.start) * view.pxPerMs);
+    // Çok uzun çubukları (1 yıl, sonsuz) ekranın biraz dışında kırp: tarayıcı aşırı genişliği çizemez.
+    const x = Math.max(xOf(sp.start), -200);
+    const bw = Math.max(4, Math.min(xOf(sp.end), w + 200) - x);
     const cls = ['bar'];
     if (sp.summary) cls.push('summary');
     if (item.done) cls.push('done');
@@ -312,7 +313,7 @@ function onMove(e) {
     let s = gesture.s0, en = gesture.e0;
     if (gesture.mode === 'move') {
       s = snap(gesture.s0 + dt, step);
-      en = s + (gesture.e0 - gesture.s0);
+      en = gesture.e0 >= FOREVER ? FOREVER : s + (gesture.e0 - gesture.s0);
     } else if (gesture.mode === 'l') {
       s = Math.min(snap(gesture.s0 + dt, step), en - step);
     } else {
@@ -320,8 +321,10 @@ function onMove(e) {
     }
     item.start = s; item.end = en;
     gesture.el.classList.add('dragging');
-    gesture.el.style.left = `${xOf(s)}px`;
-    gesture.el.style.width = `${Math.max(4, (en - s) * view.pxPerMs)}px`;
+    const w = chartWidth();
+    const x = Math.max(xOf(s), -200);
+    gesture.el.style.left = `${x}px`;
+    gesture.el.style.width = `${Math.max(4, Math.min(xOf(en), w + 200) - x)}px`;
     showTip(e.clientX, gesture.el.getBoundingClientRect().top - 6, fmtRange(s, en));
   }
 }
@@ -529,10 +532,14 @@ $('quickDates').addEventListener('click', e => {
   const d = new Date(); d.setHours(0, 0, 0, 0);
   const today = d.getTime();
   let s = null, en = null;
-  if (q === 'now1h') { s = snap(Date.now(), 15 * 60e3); en = s + HOUR; }
-  else if (q === 'today') { s = today; en = today + DAY; }
-  else if (q === 'tomorrow') { s = today + DAY; en = today + 2 * DAY; }
-  else if (q === 'week') { const wd = (new Date(today).getDay() + 6) % 7; s = today - wd * DAY; en = s + 7 * DAY; }
+  // Hepsi bugünden başlar (1 saat: şu andan).
+  if (q === 'hour') { s = snap(Date.now(), 15 * 60e3); en = s + HOUR; }
+  else if (q === 'day') { s = today; en = addDays(today, 1); }
+  else if (q === 'twodays') { s = today; en = addDays(today, 2); }
+  else if (q === 'week') { s = today; en = addDays(today, 7); }
+  else if (q === 'month') { s = today; en = addMonths(today, 1); }
+  else if (q === 'year') { s = today; en = addMonths(today, 12); }
+  else if (q === 'forever') { s = today; en = FOREVER; }
   f.start.value = toInput(s);
   f.end.value = toInput(en);
 });

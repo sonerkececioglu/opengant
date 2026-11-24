@@ -22,6 +22,7 @@ let selectedId = null;
 
 const MIN_PPH = 0.02;   // px / saat (yaklaşık yıllık görünüm)
 const MAX_PPH = 240;    // 15 dk = 60 px
+const TREE_MIN = 90, TREE_MAX = 640, TREE_NARROW = 120;   // görev paneli genişliği (px)
 const PRESETS = { month: 0.15, week: 1.2, day: 6, hour: 60 };
 
 const view = loadView();
@@ -33,7 +34,7 @@ function loadView() {
     pxPerMs: (v.pxPerHour || PRESETS.week) / HOUR,
     origin: v.origin ?? null,
     mode: v.mode || 'gantt',
-    treeNarrow: !!v.treeNarrow,
+    treeW: typeof v.treeW === 'number' ? v.treeW : (v.treeNarrow ? TREE_NARROW : null),
     showDone: !!v.showDone,
     filter: { project: '', category: '', type: '', status: '', range: '', ...(v.filter || {}) },
   };
@@ -42,7 +43,7 @@ function saveView() {
   try {
     localStorage.setItem('gp-view', JSON.stringify({
       pxPerHour: view.pxPerMs * HOUR, origin: view.origin, mode: view.mode,
-      treeNarrow: view.treeNarrow, showDone: view.showDone, filter: view.filter,
+      treeW: view.treeW, showDone: view.showDone, filter: view.filter,
     }));
   } catch { /* yok say */ }
 }
@@ -54,6 +55,19 @@ function commit() {
 }
 
 // ---------------- Yardımcılar ----------------
+// ---------------- Görev paneli genişliği ----------------
+const clampTreeW = w => Math.round(Math.max(TREE_MIN, Math.min(w, TREE_MAX, innerWidth - 120)));
+const treeWidth = () => els.tree.getBoundingClientRect().width || 300;
+function applyTreeW() {
+  const root = document.documentElement.style;
+  if (view.treeW == null) root.removeProperty('--tree-w');
+  else root.setProperty('--tree-w', clampTreeW(view.treeW) + 'px');
+  // Daraldıkça önce onay kutusu, daha da daralınca nokta ve + gizlenir
+  const w = view.treeW == null ? treeWidth() : clampTreeW(view.treeW);
+  document.body.classList.toggle('tree-tight', w < 170);
+  document.body.classList.toggle('tree-tiny', w < 130);
+}
+
 const chartWidth = () => els.chart.clientWidth || 1;
 const rowH = () => parseFloat(getComputedStyle(els.chart).getPropertyValue('--row-h')) || 34;
 const xOf = t => (t - view.origin) * view.pxPerMs;
@@ -92,7 +106,7 @@ function renderAll() {
   rows = cockpit ? cockpitRows(state, spans, view.filter) : visibleRows(state);
   document.body.classList.toggle('todo-mode', view.mode === 'todo');
   document.body.classList.toggle('cockpit-mode', cockpit);
-  document.body.classList.toggle('tree-narrow', view.treeNarrow);
+  applyTreeW();
   $('ganttView').hidden = view.mode === 'todo';
   $('todoView').hidden = view.mode !== 'todo';
   $('cockpitBar').hidden = !cockpit;
@@ -559,7 +573,7 @@ els.timeHead.addEventListener('wheel', e => {
   zoomAt(Math.exp(-Math.max(-50, Math.min(50, dy)) * 0.006), e.clientX);
 }, { passive: false });
 
-addEventListener('resize', () => scheduleTime());
+addEventListener('resize', () => { applyTreeW(); scheduleTime(); });
 setInterval(() => { if (view.mode !== 'todo') renderTime(); }, 60e3);
 
 // ---------------- Klavye ----------------
@@ -1061,7 +1075,10 @@ $('importFile').addEventListener('change', async e => {
     alert('Dosya okunamadı: ' + err.message);
   }
 });
-$('toggleTree').addEventListener('click', () => { view.treeNarrow = !view.treeNarrow; menu.hidden = true; saveView(); renderAll(); });
+$('toggleTree').addEventListener('click', () => {
+  view.treeW = treeWidth() > TREE_NARROW + 10 ? TREE_NARROW : null;
+  menu.hidden = true; saveView(); renderAll();
+});
 $('helpBtn').addEventListener('click', () => { menu.hidden = true; $('help').showModal(); });
 
 // To-do
@@ -1104,3 +1121,31 @@ async function init() {
   }
 }
 init();
+
+// ---------------- Görev paneli: sürükleyerek genişlik ----------------
+{
+  const handle = $('treeResizer');
+  let drag = null;
+  handle.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    drag = { left: els.scroller.getBoundingClientRect().left };
+    document.body.classList.add('tree-resizing');
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!drag) return;
+    view.treeW = clampTreeW(e.clientX - drag.left);
+    applyTreeW();
+    scheduleTime();
+  });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    document.body.classList.remove('tree-resizing');
+    saveView();
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('dblclick', () => { view.treeW = null; applyTreeW(); saveView(); scheduleTime(); });
+}

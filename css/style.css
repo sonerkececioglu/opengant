@@ -59,7 +59,14 @@ main[hidden] { display: none; }
   display: grid; grid-template-columns: var(--tree-w) 1fr; grid-template-rows: var(--head-h) auto;
   align-content: start; background: var(--panel);
 }
-body.tree-narrow { --tree-w: 120px; }
+#ganttView { position: relative; }
+.tree-resizer {
+  position: absolute; top: 0; bottom: 0; left: calc(var(--tree-w) - 5px); width: 10px; z-index: 15;
+  cursor: col-resize; touch-action: none;
+}
+.tree-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background .12s; }
+.tree-resizer:hover::after, body.tree-resizing .tree-resizer::after { background: var(--accent); }
+body.tree-resizing, body.tree-resizing * { cursor: col-resize !important; user-select: none; }
 
 .tree-head, .time-head { position: sticky; top: 0; z-index: 10; background: var(--panel); border-bottom: 1px solid var(--line-strong); height: var(--head-h); }
 .tree-head { display: flex; align-items: flex-end; padding: 0 12px 8px; font-weight: 600; font-size: 13px; color: var(--muted); border-right: 1px solid var(--line-strong); }
@@ -87,7 +94,7 @@ body.tree-narrow { --tree-w: 120px; }
 .t-row.done .title { color: var(--muted); text-decoration: line-through; }
 .t-row .add { flex: none; border: 0; background: none; color: var(--muted); padding: 2px 6px; font-size: 16px; opacity: 0; }
 .t-row:hover .add, .t-row.sel .add { opacity: 1; }
-body.tree-narrow .t-row .chk, body.tree-narrow .t-row .add, body.tree-narrow .t-row .dot { display: none; }
+body.tree-tight .t-row .chk, body.tree-tiny .t-row .add, body.tree-tiny .t-row .dot { display: none; }
 
 .chart {
   position: relative; overflow: hidden; touch-action: pan-y; cursor: grab;
@@ -190,7 +197,6 @@ dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: 
 /* --- Telefon --- */
 @media (max-width: 720px) {
   :root { --row-h: 40px; --tree-w: 150px; }
-  body.tree-narrow { --tree-w: 90px; }
   .toolbar { padding: 6px 8px; gap: 6px; }
   button { padding: 7px 9px; }
   #zoomOut, #zoomIn { display: none; }

@@ -911,11 +911,16 @@ $('edAddChild').addEventListener('click', () => {
   applyEditor();
   const parentId = editing.id;
   editing = null;
+  commit();
+  // 'close' olayı eşzamansız gelir: yeni görevi kapanış işlendikten sonra aç,
+  // yoksa kapanış onu "iptal edilen yeni öğe" sanıp siler.
+  els.editor.addEventListener('close', () => {
+    const kid = newItem(state, parentId);
+    store.save(state);
+    renderAll();
+    openEditor(kid.id, true);
+  }, { once: true });
   els.editor.close();
-  const kid = newItem(state, parentId);
-  store.save(state);
-  renderAll();
-  openEditor(kid.id, true);
 });
 
 // ---------------- Araç çubuğu ----------------
